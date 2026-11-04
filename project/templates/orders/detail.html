@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}{{ order.order_number }}{% endblock %}
+{% block page_title %}Order details{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">ORDER RECEIPT</p><h1>{{ order.order_number }}</h1><p class="muted">Created {{ order.created_at|dhaka }} by {{ order.created_by.full_name }}</p></div>
+  <div class="heading-actions"><button class="btn btn-light" onclick="window.print()">⎙ Print receipt</button><a class="btn btn-light" href="{{ url_for('sales.orders') }}">← All orders</a></div>
+</div>
+<div class="order-detail-grid">
+  <section class="panel receipt-panel">
+    <div class="receipt-top">{% if stall_logo %}<img class="receipt-logo" src="{{ url_for('main.private_upload', filename=stall_logo) }}" alt="">{% else %}<span class="food-icon">🍔</span>{% endif %}<div><h2>{{ stall_name }}</h2>{% if stall_contact %}<p>{{ stall_contact }}</p>{% endif %}<p>{{ order.customer_name or 'Walk-in customer' }}{% if order.reference %} · {{ order.reference }}{% endif %}</p></div><span class="badge badge-{{ order.status|lower }}">{{ order.status }}</span></div>
+    <div class="receipt-items"><div class="receipt-row receipt-th"><span>ITEM</span><span>QTY</span><span>PRICE</span><span>AMOUNT</span></div>{% for item in order.items %}<div class="receipt-row"><span>{{ item.product_name }}</span><span>{{ item.quantity }}</span><span>{{ item.unit_price|money }}</span><b>{{ item.line_total|money }}</b></div>{% endfor %}</div>
+    <div class="receipt-totals"><div><span>Subtotal</span><b>{{ order.subtotal|money }}</b></div><div><span>Discount</span><b>− {{ order.discount|money }}</b></div><div class="receipt-grand"><span>Total</span><strong>{{ order.total|money }}</strong></div><div><span>Received</span><b>{{ received|money }}</b></div><div><span>Remaining</span><b>{{ remaining|money }}</b></div><div><span>Payment status</span><b>{{ order.payment_status }}</b></div></div>
+    {% if order.notes %}<div class="receipt-note"><b>Order notes</b><p>{{ order.notes }}</p></div>{% endif %}
+    {% if order.cancellation_reason %}<div class="receipt-note"><b>Cancellation / refund reason</b><p>{{ order.cancellation_reason }}</p></div>{% endif %}
+    {% if receipt_footer %}<div class="receipt-footer">{{ receipt_footer }}</div>{% endif %}
+  </section>
+  <aside class="order-side">
+    <div class="panel side-panel"><p class="eyebrow">PAYMENT RECORDS</p><h2>Payments</h2>
+      {% for payment in order.payments %}<div class="payment-record"><span class="payment-dot {% if payment.method == 'bkash' %}dot-teal{% else %}dot-yellow{% endif %}"></span><div><b>{{ payment.amount|money }} · {{ payment_names[payment.method] }}</b><small>{{ payment.created_at|dhaka }} · {{ payment.recorded_by.full_name }}</small>{% if payment.reference_id %}<small>Ref: {{ payment.reference_id }}</small>{% endif %}{% if payment.status != 'Recorded' %}<small class="danger-text">{{ payment.status }}</small>{% endif %}</div></div>{% else %}<p class="muted">No payments recorded yet.</p>{% endfor %}
+    </div>
+    {% if order.status == 'Completed' and remaining > 0 %}<div class="panel side-panel"><p class="eyebrow">COLLECT REMAINING</p><h2>Record payment</h2><form method="post" action="{{ url_for('sales.add_payment', order_id=order.id) }}" class="form-stack compact-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Method<select name="method" required><option value="hand">By hand (cash)</option><option value="bkash">bKash</option></select></label><label>Amount (৳)<input name="amount" type="number" step="0.01" min="0.01" max="{{ remaining }}" value="{{ remaining }}" required></label><label>Reference ID <span class="optional">optional</span><input name="reference_id" maxlength="120"></label><button class="btn btn-primary">Record payment</button></form></div>{% endif %}
+    {% if order.status == 'Completed' and current_user.role in ['ROOT','OWNER','MANAGER'] %}<div class="panel warning-panel"><p class="eyebrow">ORDER ACTIONS</p><h3>Cancel or refund this order</h3><p>Either action restores stock and marks recorded payments as refunded. Add a reason for the audit trail.</p><form method="post" action="{{ url_for('sales.void_order', order_id=order.id) }}" data-confirm="Cancel this order and restore stock?" class="form-stack"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Cancellation reason<input name="reason" minlength="4" required placeholder="Reason for cancellation"></label><button class="btn btn-danger">Cancel order</button></form><form method="post" action="{{ url_for('sales.refund_order', order_id=order.id) }}" data-confirm="Mark this order as refunded and restore stock?" class="form-stack refund-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><label>Refund reason<input name="reason" minlength="4" required placeholder="Reason for refund"></label><button class="btn btn-light">Refund order</button></form></div>{% endif %}
+  </aside>
+</div>
+{% endblock %}
