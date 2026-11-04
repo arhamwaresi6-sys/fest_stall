@@ -43,8 +43,6 @@ def dashboard():
     expense_total = sum((e.amount for e in expense_rows), Decimal("0.00"))
     payments = db.session.scalars(select(Payment).join(Order).where(Payment.created_at >= start, Payment.created_at < end, Payment.status == "Recorded", Order.status == "Completed")).all()
     by_method = {key: sum((p.amount for p in payments if p.method == key), Decimal("0.00")) for key in PAYMENT_METHODS}
-    largest_method = max(by_method.values(), default=Decimal("0.00"))
-    method_percent = {key: int((amount / largest_method * 100).quantize(Decimal("1"))) if largest_method else 0 for key, amount in by_method.items()}
     item_totals = defaultdict(lambda: {"units": 0, "revenue": Decimal("0.00"), "cost": Decimal("0.00"), "orders": set()})
     for order in sale_orders:
         for item, net_line in zip(order.items, net_order_item_amounts(order)):
@@ -54,6 +52,20 @@ def dashboard():
             row["orders"].add(order.id)
             row["revenue"] += net_line
     best_products = sorted(item_totals.items(), key=lambda entry: (entry[1]["revenue"] - entry[1]["cost"], entry[1]["units"]), reverse=True)
+    top_revenue_products = sorted(
+        item_totals.items(),
+        key=lambda entry: (entry[1]["revenue"], entry[1]["units"]),
+        reverse=True,
+    )[:5]
+    top_product_revenue = max(
+        (row["revenue"] for _, row in top_revenue_products),
+        default=Decimal("0.00"),
+    )
+    payment_total = sum(by_method.values(), Decimal("0.00"))
+    payment_shares = {
+        key: float(amount / payment_total * 100) if payment_total else 0
+        for key, amount in by_method.items()
+    }
     span = (end_date - start_date).days + 1
     use_weeks = span > 31
     bucketed = defaultdict(lambda: {"sales": Decimal("0.00"), "expenses": Decimal("0.00")})
@@ -88,9 +100,11 @@ def dashboard():
                            by_method=by_method, payment_names=PAYMENT_METHODS, products=products,
                            low_stock=low_stock, out_stock=sum(1 for p in products if p.stock == 0),
                            recent_orders=recent_orders, best_products=best_products[:8], audit_events=audit_events,
+                           top_revenue_products=top_revenue_products,
+                           top_product_revenue=top_product_revenue,
                            chart_labels=chart_labels, chart_sales=chart_sales, chart_expenses=chart_expenses,
                            chart_max=max(chart_sales + chart_expenses, default=Decimal("0.00")), chart_weekly=use_weeks,
-                           method_percent=method_percent, today_local=today_local,
+                           payment_shares=payment_shares, today_local=today_local,
                            yesterday_local=today_local-timedelta(days=1), week_start=today_local-timedelta(days=6))
 
 

@@ -218,6 +218,47 @@ class WebsiteWorkflowTests(unittest.TestCase):
             1,
         )
 
+    def test_dashboard_shows_payment_and_top_revenue_charts(self):
+        high_revenue_product = Product(
+            name="High Revenue item",
+            category="Food",
+            selling_price=7,
+            cost_price=2,
+            stock=5,
+            min_stock=1,
+            is_available=True,
+        )
+        db.session.add(high_revenue_product)
+        db.session.commit()
+
+        for token, product_id in (
+            ("dashboard-low-revenue", self.product_id),
+            ("dashboard-high-revenue", high_revenue_product.id),
+        ):
+            response = self.client.post(
+                "/pos",
+                data={
+                    "checkout_token": token,
+                    "cart": json.dumps([{"id": product_id, "quantity": 1}]),
+                    "payments": "[]",
+                },
+            )
+            self.assertEqual(response.status_code, 302)
+
+        today = date.today().isoformat()
+        dashboard = self.client.get(f"/dashboard?start={today}&end={today}")
+        self.assertEqual(dashboard.status_code, 200)
+        html = dashboard.data.decode()
+        self.assertIn("How customers paid", html)
+        self.assertIn("payment-donut", html)
+        top_revenue_section = html.split("Top revenue products", 1)[1].split(
+            "Product performance", 1
+        )[0]
+        self.assertLess(
+            top_revenue_section.index("High Revenue item"),
+            top_revenue_section.index("Test snack"),
+        )
+
     def test_checkout_rejects_invalid_order_acceptors(self):
         inactive_cashier = User(
             username="inactive.cashier",
