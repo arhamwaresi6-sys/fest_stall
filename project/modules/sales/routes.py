@@ -10,10 +10,11 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from ...extensions import db
-from ...models import InventoryTransaction, Order, OrderItem, Payment, Product
+from ...models import InventoryTransaction, Order, OrderItem, Payment, Product, User
 from ...utils import FINANCIAL_ROLES, PAYMENT_METHODS, audit, date_window, decimal_value, parse_date, refresh_order_payment_status, role_required
 
 bp = Blueprint("sales", __name__)
+ORDER_ACCEPTOR_ROLES = ("ROOT", "OWNER", "MANAGER", "CASHIER")
 
 
 def restore_order_stock(order, kind, reason):
@@ -39,6 +40,7 @@ def restore_order_stock(order, kind, reason):
 @login_required
 @role_required("OWNER", "MANAGER", "CASHIER")
 def pos():
+    selected_acceptor_id = request.form.get("accepted_by_id", str(current_user.id))
     if request.method == "POST":
         try:
             checkout_token = request.form.get("checkout_token", "").strip()
@@ -48,6 +50,19 @@ def pos():
             if existing:
                 flash("This order was already saved.", "success")
                 return redirect(url_for("sales.order_detail", order_id=existing.id))
+            try:
+                accepted_by_id = int(selected_acceptor_id)
+            except (TypeError, ValueError):
+                raise ValueError("Choose an active user who can accept orders.")
+            accepted_by = db.session.scalar(
+                select(User).where(
+                    User.id == accepted_by_id,
+                    User.active.is_(True),
+                    User.role.in_(ORDER_ACCEPTOR_ROLES),
+                )
+            )
+            if accepted_by is None:
+                raise ValueError("Choose an active user who can accept orders.")
             cart = json.loads(request.form.get("cart", "[]"))
             payment_rows = json.loads(request.form.get("payments", "[]"))
             if not isinstance(cart, list) or not cart:
@@ -100,10 +115,9 @@ def pos():
             order = Order(order_number=f"FS-{datetime.now(timezone.utc):%y%m%d}-{uuid4().hex[:6].upper()}",
                           checkout_token=checkout_token,
                           subtotal=subtotal, discount=discount, total=total,
-                          customer_name=request.form.get("customer_name", "").strip()[:120] or None,
-                          reference=request.form.get("reference", "").strip()[:120] or None,
                           notes=request.form.get("notes", "").strip()[:2000] or None,
-                          created_by_id=current_user.id)
+                          created_by_id=current_user.id,
+                          accepted_by_id=accepted_by.id)
             db.session.add(order)
             db.session.flush()
             for product_id, quantity in quantities.items():
@@ -141,8 +155,14 @@ def pos():
             flash("The order could not be saved because of a database error. Please contact the owner.", "danger")
     products = db.session.scalars(select(Product).where(Product.is_archived.is_(False), Product.is_available.is_(True), Product.stock > 0).order_by(Product.category, Product.name)).all()
     categories = sorted({p.category for p in products})
+    order_acceptors = db.session.scalars(
+        select(User)
+        .where(User.active.is_(True), User.role.in_(ORDER_ACCEPTOR_ROLES))
+        .order_by(User.full_name, User.username)
+    ).all()
     return render_template("sales/pos.html", products=products, categories=categories, payment_methods=PAYMENT_METHODS,
-                           checkout_token=secrets.token_urlsafe(32))
+                           checkout_token=secrets.token_urlsafe(32), order_acceptors=order_acceptors,
+                           selected_acceptor_id=selected_acceptor_id)
 
 
 @bp.get("/orders")

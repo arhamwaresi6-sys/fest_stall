@@ -3,7 +3,7 @@
 {% block page_title %}Order details{% endblock %}
 {% block content %}
 <div class="page-heading">
-  <div><p class="eyebrow">ORDER RECEIPT</p><h1>{{ order.order_number }}</h1><p class="muted">Created {{ order.created_at|dhaka }} by {{ order.created_by.full_name }}</p></div>
+  <div><p class="eyebrow">ORDER RECEIPT</p><h1>{{ order.order_number }}</h1><p class="muted">Accepted by {{ order.accepted_by.full_name }} · Created {{ order.created_at|dhaka }} by {{ order.created_by.full_name }}</p></div>
   <div class="heading-actions"><button class="btn btn-light" onclick="window.print()">⎙ Print receipt</button><a class="btn btn-light" href="{{ url_for('sales.orders') }}">← All orders</a></div>
 </div>
 <div class="order-detail-grid">

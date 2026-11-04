@@ -16,8 +16,14 @@ class Order(db.Model):
     notes = db.Column(db.Text)
     cancellation_reason = db.Column(db.Text)
     created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    accepted_by_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", name="fk_order_accepted_by_user"),
+        nullable=False,
+    )
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
-    created_by = db.relationship("User", backref="orders")
+    created_by = db.relationship("User", foreign_keys=[created_by_id], backref="orders")
+    accepted_by = db.relationship("User", foreign_keys=[accepted_by_id], backref="accepted_orders")
     items = db.relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     payments = db.relationship("Payment", back_populates="order", cascade="all, delete-orphan")
     __table_args__ = (db.CheckConstraint("status IN ('Completed', 'Cancelled', 'Refunded')", name="ck_order_status_allowed"),

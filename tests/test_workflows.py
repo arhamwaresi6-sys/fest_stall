@@ -84,6 +84,12 @@ class WebsiteWorkflowTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertLess(self.client.get(path).status_code, 500)
 
+        pos_page = self.client.get("/pos").data
+        self.assertIn(b"Accepted by", pos_page)
+        self.assertIn(b"cashier", pos_page)
+        self.assertNotIn(b"Customer or order label", pos_page)
+        self.assertNotIn(b"Order reference", pos_page)
+
         response = self.client.get("/inventory/export.csv")
         self.assertEqual(response.mimetype, "text/csv")
         self.assertIn(b"Test snack", response.data)
@@ -163,6 +169,9 @@ class WebsiteWorkflowTests(unittest.TestCase):
     def test_root_checkout_discount_and_single_root_protection(self):
         checkout = {
             "checkout_token": "workflow-discount-1",
+            "accepted_by_id": str(
+                db.session.scalar(db.select(User).where(User.username == "cashier")).id
+            ),
             "cart": json.dumps([{"id": self.product_id, "quantity": 2}]),
             "payments": json.dumps([{"method": "hand", "amount": "3.00"}]),
             "discount": "25",
@@ -174,6 +183,8 @@ class WebsiteWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(str(order.discount), "1.00")
         self.assertEqual(str(order.total), "3.00")
+        self.assertEqual(order.accepted_by.username, "cashier")
+        self.assertEqual(order.created_by.username, "root")
 
         root = db.session.scalar(db.select(User).where(User.role == "ROOT"))
         self.assertEqual(self.client.post(f"/team/{root.id}/toggle").status_code, 302)
@@ -206,6 +217,45 @@ class WebsiteWorkflowTests(unittest.TestCase):
             ),
             1,
         )
+
+    def test_checkout_rejects_invalid_order_acceptors(self):
+        inactive_cashier = User(
+            username="inactive.cashier",
+            full_name="Inactive Cashier",
+            role="CASHIER",
+            active=False,
+        )
+        inactive_cashier.set_password("inactive-cashier-password")
+        active_staff = User(
+            username="active.staff",
+            full_name="Active Staff",
+            role="STAFF",
+            active=True,
+        )
+        active_staff.set_password("active-staff-password")
+        db.session.add_all([inactive_cashier, active_staff])
+        db.session.commit()
+
+        for token, user in (
+            ("workflow-inactive-acceptor", inactive_cashier),
+            ("workflow-unauthorized-acceptor", active_staff),
+        ):
+            checkout = {
+                "checkout_token": token,
+                "accepted_by_id": str(user.id),
+                "cart": json.dumps([{"id": self.product_id, "quantity": 1}]),
+                "payments": "[]",
+            }
+            response = self.client.post("/pos", data=checkout)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(
+                b"Choose an active user who can accept orders.", response.data
+            )
+            self.assertIsNone(
+                db.session.scalar(
+                    db.select(Order).where(Order.checkout_token == token)
+                )
+            )
 
     def test_product_and_inventory_tracking(self):
         response = self.client.post(
@@ -259,6 +309,9 @@ class WebsiteWorkflowTests(unittest.TestCase):
     def test_sale_payment_refund_and_void(self):
         checkout = {
             "checkout_token": "workflow-checkout-1",
+            "accepted_by_id": str(
+                db.session.scalar(db.select(User).where(User.username == "root")).id
+            ),
             "cart": json.dumps([{"id": self.product_id, "quantity": 1}]),
             "payments": json.dumps([{"method": "hand", "amount": "1.00"}]),
             "discount": "0",
