@@ -27,6 +27,34 @@ def decimal_value(value, field="amount", minimum=ZERO):
     return number
 
 
+def quantity_value(value, field="quantity", minimum=Decimal("0")):
+    try:
+        number = Decimal(str(value)).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError(f"Enter a valid {field}.")
+    if not number.is_finite():
+        raise ValueError(f"Enter a valid {field}.")
+    if minimum is not None and number < minimum:
+        raise ValueError(f"{field.title()} must be at least {minimum}.")
+    return number
+
+
+def cost_value(value, field="unit cost"):
+    try:
+        raw_number = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError(f"Enter a valid {field}.")
+    if not raw_number.is_finite():
+        raise ValueError(f"Enter a valid {field}.")
+    if raw_number < ZERO:
+        raise ValueError(f"{field.title()} cannot be negative.")
+    try:
+        number = raw_number.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise ValueError(f"Enter a valid {field}.")
+    return number
+
+
 def role_required(*roles):
     def decorator(view):
         @wraps(view)
@@ -101,3 +129,11 @@ def net_order_item_amounts(order):
             allocated += amount
         amounts.append(amount)
     return amounts
+
+
+def order_item_cost(item):
+    addon_cost = sum(
+        (addon.quantity_per_product * addon.unit_cost * item.quantity for addon in item.addons),
+        ZERO,
+    )
+    return item.unit_cost * item.quantity + addon_cost

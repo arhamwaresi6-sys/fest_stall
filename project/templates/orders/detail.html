@@ -1,15 +1,16 @@
 {% extends 'base.html' %}
+{% from "macros/icons.html" import icon %}
 {% block title %}{{ order.order_number }}{% endblock %}
 {% block page_title %}Order details{% endblock %}
 {% block content %}
 <div class="page-heading">
   <div><p class="eyebrow">ORDER RECEIPT</p><h1>{{ order.order_number }}</h1><p class="muted">Accepted by {{ order.accepted_by.full_name }} · Created {{ order.created_at|dhaka }} by {{ order.created_by.full_name }}</p></div>
-  <div class="heading-actions"><button class="btn btn-light" onclick="window.print()">⎙ Print receipt</button><a class="btn btn-light" href="{{ url_for('sales.orders') }}">← All orders</a></div>
+  <div class="heading-actions"><button class="btn btn-light" onclick="window.print()">{{ icon('print') }} Print receipt</button><a class="btn btn-light" href="{{ url_for('sales.orders') }}">← All orders</a></div>
 </div>
 <div class="order-detail-grid">
   <section class="panel receipt-panel">
     <div class="receipt-top">{% if stall_logo %}<img class="receipt-logo" src="{{ url_for('main.private_upload', filename=stall_logo) }}" alt="">{% else %}<span class="food-icon">🍔</span>{% endif %}<div><h2>{{ stall_name }}</h2>{% if stall_contact %}<p>{{ stall_contact }}</p>{% endif %}<p>{{ order.customer_name or 'Walk-in customer' }}{% if order.reference %} · {{ order.reference }}{% endif %}</p></div><span class="badge badge-{{ order.status|lower }}">{{ order.status }}</span></div>
-    <div class="receipt-items"><div class="receipt-row receipt-th"><span>ITEM</span><span>QTY</span><span>PRICE</span><span>AMOUNT</span></div>{% for item in order.items %}<div class="receipt-row"><span>{{ item.product_name }}</span><span>{{ item.quantity }}</span><span>{{ item.unit_price|money }}</span><b>{{ item.line_total|money }}</b></div>{% endfor %}</div>
+    <div class="receipt-items"><div class="receipt-row receipt-th"><span>ITEM</span><span>QTY</span><span>PRICE</span><span>AMOUNT</span></div>{% for item in order.items %}<div class="receipt-row"><span>{{ item.product_name }}{% if item.addons %}<small class="receipt-addon-details">Extras: {% for addon in item.addons %}{{ addon.ingredient_name }}{% if not loop.last %}, {% endif %}{% endfor %}</small>{% endif %}</span><span>{{ item.quantity }}</span><span>{{ (item.unit_price + (item.addons|sum(attribute='unit_price')))|money }}</span><b>{{ item.line_total|money }}</b></div>{% endfor %}</div>
     <div class="receipt-totals"><div><span>Subtotal</span><b>{{ order.subtotal|money }}</b></div><div><span>Discount</span><b>− {{ order.discount|money }}</b></div><div class="receipt-grand"><span>Total</span><strong>{{ order.total|money }}</strong></div><div><span>Received</span><b>{{ received|money }}</b></div><div><span>Remaining</span><b>{{ remaining|money }}</b></div><div><span>Payment status</span><b>{{ order.payment_status }}</b></div></div>
     {% if order.notes %}<div class="receipt-note"><b>Order notes</b><p>{{ order.notes }}</p></div>{% endif %}
     {% if order.cancellation_reason %}<div class="receipt-note"><b>Cancellation / refund reason</b><p>{{ order.cancellation_reason }}</p></div>{% endif %}

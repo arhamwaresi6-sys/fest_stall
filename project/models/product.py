@@ -15,6 +15,7 @@ class Product(db.Model):
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
     image_filename = db.Column(db.String(255))
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    addons = db.relationship("ProductAddon", back_populates="product", cascade="all, delete-orphan")
 
     __table_args__ = (db.CheckConstraint("selling_price >= 0", name="ck_product_selling_nonnegative"),
                       db.CheckConstraint("cost_price >= 0", name="ck_product_cost_nonnegative"),

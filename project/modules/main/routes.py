@@ -8,11 +8,12 @@ from zoneinfo import ZoneInfo
 from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_from_directory, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import func, select
+from sqlalchemy.orm import joinedload, selectinload
 
 from ...extensions import db
 from ...image_uploads import save_image
 from ...models import AuditLog, Expense, Order, OrderItem, Payment, Product, Setting
-from ...utils import FINANCIAL_ROLES, PAYMENT_METHODS, audit, net_order_item_amounts, selected_window
+from ...utils import FINANCIAL_ROLES, PAYMENT_METHODS, audit, net_order_item_amounts, order_item_cost, selected_window
 
 bp = Blueprint("main", __name__)
 
@@ -35,10 +36,15 @@ def index():
 def dashboard():
     start_date, end_date, start, end = selected_window(1)
     today_local = datetime.now(ZoneInfo("Asia/Dhaka")).date()
-    orders = db.session.scalars(select(Order).where(Order.created_at >= start, Order.created_at < end).order_by(Order.created_at.desc())).all()
+    orders = db.session.scalars(
+        select(Order)
+        .options(selectinload(Order.items).selectinload(OrderItem.addons))
+        .where(Order.created_at >= start, Order.created_at < end)
+        .order_by(Order.created_at.desc())
+    ).all()
     sale_orders = [o for o in orders if o.status == "Completed"]
     total_revenue = sum((o.total for o in sale_orders), Decimal("0.00"))
-    total_cogs = sum((i.unit_cost * i.quantity for o in sale_orders for i in o.items), Decimal("0.00"))
+    total_cogs = sum((order_item_cost(i) for o in sale_orders for i in o.items), Decimal("0.00"))
     expense_rows = db.session.scalars(select(Expense).where(Expense.expense_date >= start_date, Expense.expense_date <= end_date)).all()
     expense_total = sum((e.amount for e in expense_rows), Decimal("0.00"))
     payments = db.session.scalars(select(Payment).join(Order).where(Payment.created_at >= start, Payment.created_at < end, Payment.status == "Recorded", Order.status == "Completed")).all()
@@ -48,7 +54,7 @@ def dashboard():
         for item, net_line in zip(order.items, net_order_item_amounts(order)):
             row = item_totals[item.product_name]
             row["units"] += item.quantity
-            row["cost"] += item.unit_cost * item.quantity
+            row["cost"] += order_item_cost(item)
             row["orders"].add(order.id)
             row["revenue"] += net_line
     best_products = sorted(item_totals.items(), key=lambda entry: (entry[1]["revenue"] - entry[1]["cost"], entry[1]["units"]), reverse=True)
@@ -91,7 +97,12 @@ def dashboard():
     chart_expenses = [bucketed[key]["expenses"] for key in chart_keys]
     products = db.session.scalars(select(Product).where(Product.is_archived.is_(False)).order_by(Product.name)).all()
     low_stock = [p for p in products if p.stock <= p.min_stock]
-    recent_orders = db.session.scalars(select(Order).order_by(Order.created_at.desc()).limit(7)).all()
+    recent_orders = db.session.scalars(
+        select(Order)
+        .options(joinedload(Order.created_by), joinedload(Order.accepted_by))
+        .order_by(Order.created_at.desc())
+        .limit(7)
+    ).all()
     audit_events = db.session.scalars(select(AuditLog).order_by(AuditLog.created_at.desc()).limit(6)).all() if current_user.role in FINANCIAL_ROLES else []
     return render_template("dashboard/index.html", start_date=start_date, end_date=end_date,
                            total_revenue=total_revenue, total_cogs=total_cogs, expense_total=expense_total,

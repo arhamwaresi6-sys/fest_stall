@@ -1,11 +1,12 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import or_, select
+from decimal import Decimal
 from ...image_uploads import save_image
 
 from ...extensions import db
-from ...models import InventoryTransaction, Order, OrderItem, Product, Setting
-from ...utils import PRODUCT_ROLES, audit, decimal_value, role_required
+from ...models import Ingredient, InventoryTransaction, Order, OrderItem, Product, ProductAddon, Setting
+from ...utils import PRODUCT_ROLES, audit, decimal_value, quantity_value, role_required
 
 bp = Blueprint("products", __name__, url_prefix="/products")
 
@@ -49,6 +50,40 @@ def save_product(product=None):
         min_stock = int(request.form.get("min_stock", "5"))
         if stock < 0 or min_stock < 0:
             raise ValueError("Stock values cannot be negative.")
+        addon_rows = []
+        seen_ingredients = set()
+        ingredient_ids = request.form.getlist("addon_ingredient_id")
+        quantities = request.form.getlist("addon_quantity")
+        prices = request.form.getlist("addon_price")
+        if len(ingredient_ids) > 50:
+            raise ValueError("A product can have up to 50 add-ons.")
+        for index, ingredient_id in enumerate(ingredient_ids):
+            quantity = quantities[index] if index < len(quantities) else ""
+            addon_price_input = prices[index] if index < len(prices) else ""
+            if not ingredient_id and not quantity and not addon_price_input:
+                continue
+            try:
+                ingredient_id = int(ingredient_id)
+            except (TypeError, ValueError):
+                raise ValueError("Choose an ingredient for every add-on.")
+            if ingredient_id in seen_ingredients:
+                raise ValueError("Each ingredient can only be added once per product.")
+            seen_ingredients.add(ingredient_id)
+            amount = quantity_value(quantity, "ingredient quantity", minimum=Decimal("0.001"))
+            addon_price = decimal_value(addon_price_input, "add-on price")
+            addon_rows.append((ingredient_id, amount, addon_price))
+        if addon_rows:
+            ingredients = db.session.scalars(
+                select(Ingredient).where(
+                    Ingredient.id.in_([row[0] for row in addon_rows]),
+                    Ingredient.active.is_(True),
+                )
+            ).all()
+            if len(ingredients) != len(addon_rows):
+                raise ValueError("One of the selected ingredients is no longer available.")
+            ingredient_by_id = {ingredient.id: ingredient for ingredient in ingredients}
+            addon_rows = [(ingredient_by_id[ingredient_id], amount, price)
+                          for ingredient_id, amount, price in addon_rows]
     except (ValueError, TypeError) as exc:
         flash(str(exc), "danger")
         return None
@@ -66,6 +101,20 @@ def save_product(product=None):
     if product.id is None:
         product.stock = stock
     product.is_available = request.form.get("is_available") == "on"
+    existing_addons = {addon.ingredient_id: addon for addon in product.addons}
+    desired_ingredient_ids = {ingredient.id for ingredient, _, _ in addon_rows}
+    for ingredient_id, addon in existing_addons.items():
+        if ingredient_id not in desired_ingredient_ids:
+            product.addons.remove(addon)
+    for ingredient, amount, addon_price in addon_rows:
+        addon = existing_addons.get(ingredient.id)
+        if addon:
+            addon.quantity_used = amount
+            addon.unit_price = addon_price
+        else:
+            product.addons.append(
+                ProductAddon(ingredient=ingredient, quantity_used=amount, unit_price=addon_price)
+            )
     db.session.add(product)
     return product
 
@@ -88,7 +137,11 @@ def create():
             flash("Product added.", "success")
             return redirect(url_for("products.index"))
     threshold = db.session.get(Setting, "low_stock_threshold")
+    addon_ingredients = db.session.scalars(
+        select(Ingredient).where(Ingredient.active.is_(True)).order_by(Ingredient.name)
+    ).all()
     return render_template("products/form.html", product=None, title="Add product",
+                           addon_ingredients=addon_ingredients,
                            default_min_stock=int(threshold.value) if threshold and threshold.value.isdigit() else 5)
 
 
@@ -105,7 +158,11 @@ def edit(product_id):
             db.session.commit()
             flash("Product updated.", "success")
             return redirect(url_for("products.index"))
-    return render_template("products/form.html", product=product, title="Edit product", default_min_stock=product.min_stock)
+    addon_ingredients = db.session.scalars(
+        select(Ingredient).where(Ingredient.active.is_(True)).order_by(Ingredient.name)
+    ).all()
+    return render_template("products/form.html", product=product, title="Edit product",
+                           addon_ingredients=addon_ingredients, default_min_stock=product.min_stock)
 
 
 @bp.post("/<int:product_id>/archive")

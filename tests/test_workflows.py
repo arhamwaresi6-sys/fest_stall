@@ -1,6 +1,7 @@
 import json
 import unittest
 from datetime import date
+from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 
@@ -9,7 +10,18 @@ from werkzeug.datastructures import FileStorage
 
 from project import create_app
 from project.extensions import db
-from project.models import Expense, Order, Product, Setting, User
+from project.models import (
+    Expense,
+    Ingredient,
+    IngredientTransaction,
+    Order,
+    OrderItemAddon,
+    Product,
+    ProductAddon,
+    Setting,
+    User,
+)
+from project.utils import order_item_cost
 from settings import Config
 
 
@@ -66,6 +78,7 @@ class WebsiteWorkflowTests(unittest.TestCase):
             "/dashboard",
             "/expenses/",
             "/inventory/",
+            "/inventory/ingredients",
             "/inventory/?status=low",
             "/inventory/?q=Food",
             "/inventory/export.csv",
@@ -83,6 +96,14 @@ class WebsiteWorkflowTests(unittest.TestCase):
         for path in paths:
             with self.subTest(path=path):
                 self.assertLess(self.client.get(path).status_code, 500)
+
+        dashboard = self.client.get("/dashboard")
+        self.assertIn(b"viewport-fit=cover", dashboard.data)
+        self.assertIn(b"icons.svg#dashboard", dashboard.data)
+        icon_sprite = self.client.get("/static/icons.svg")
+        self.assertEqual(icon_sprite.status_code, 200)
+        self.assertIn(b'id="cart"', icon_sprite.data)
+        icon_sprite.close()
 
         pos_page = self.client.get("/pos").data
         self.assertIn(b"Accepted by", pos_page)
@@ -399,6 +420,165 @@ class WebsiteWorkflowTests(unittest.TestCase):
         )
         db.session.refresh(order)
         self.assertEqual(order.status, "Cancelled")
+
+    def test_product_addons_are_priced_tracked_and_restored(self):
+        response = self.client.post(
+            "/inventory/ingredients",
+            data={
+                "name": "Extra tomato",
+                "unit": "piece",
+                "stock": "5",
+                "min_stock": "1",
+                "unit_cost": "0.1250",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        ingredient = db.session.scalar(
+            db.select(Ingredient).where(Ingredient.name == "Extra tomato")
+        )
+        self.assertIsNotNone(ingredient)
+        self.assertEqual(str(ingredient.stock), "5.000")
+
+        response = self.client.post(
+            "/products/new",
+            data={
+                "name": "Addon burger",
+                "category": "Burgers",
+                "description": "",
+                "selling_price": "4.00",
+                "cost_price": "2.00",
+                "stock": "4",
+                "min_stock": "1",
+                "is_available": "on",
+                "addon_ingredient_id": str(ingredient.id),
+                "addon_quantity": "1.500",
+                "addon_price": "0.75",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        product = db.session.scalar(
+            db.select(Product).where(Product.name == "Addon burger")
+        )
+        self.assertEqual(len(product.addons), 1)
+        self.assertEqual(str(product.addons[0].quantity_used), "1.500")
+        response = self.client.post(
+            f"/products/{product.id}/edit",
+            data={
+                "name": "Addon burger",
+                "category": "Burgers",
+                "description": "",
+                "selling_price": "4.00",
+                "cost_price": "2.00",
+                "stock": str(product.stock),
+                "min_stock": "1",
+                "is_available": "on",
+                "addon_ingredient_id": str(ingredient.id),
+                "addon_quantity": "1.500",
+                "addon_price": "0.75",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(product)
+        self.assertEqual(len(product.addons), 1)
+
+        checkout_token = "addon-workflow-checkout"
+        response = self.client.post(
+            "/pos",
+            data={
+                "checkout_token": checkout_token,
+                "accepted_by_id": str(
+                    db.session.scalar(
+                        db.select(User).where(User.username == "cashier")
+                    ).id
+                ),
+                "cart": json.dumps(
+                    [{"id": product.id, "quantity": 2, "addons": [ingredient.id]}]
+                ),
+                "payments": "[]",
+                "discount": "0",
+                "discount_kind": "amount",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        order = db.session.scalar(
+            db.select(Order).where(Order.checkout_token == checkout_token)
+        )
+        item = order.items[0]
+        self.assertEqual(str(order.subtotal), "9.50")
+        self.assertEqual(str(item.line_total), "9.50")
+        self.assertEqual(len(item.addons), 1)
+        self.assertIsInstance(item.addons[0], OrderItemAddon)
+        self.assertEqual(item.addons[0].ingredient_name, "Extra tomato")
+        self.assertEqual(order_item_cost(item), Decimal("4.375000"))
+        self.assertEqual(str(ingredient.stock), "2.000")
+        self.assertEqual(product.stock, 2)
+
+        response = self.client.get(f"/orders/{order.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Extras: Extra tomato", response.data)
+
+        response = self.client.post(
+            f"/orders/{order.id}/void", data={"reason": "Customer cancelled"}
+        )
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(ingredient)
+        db.session.refresh(product)
+        self.assertEqual(str(ingredient.stock), "5.000")
+        self.assertEqual(product.stock, 4)
+        self.assertEqual(
+            db.session.scalar(
+                db.select(db.func.count(IngredientTransaction.id)).where(
+                    IngredientTransaction.order_id == order.id,
+                    IngredientTransaction.kind == "Cancellation",
+                )
+            ),
+            1,
+        )
+
+    def test_checkout_rejects_addons_when_ingredient_stock_is_short(self):
+        ingredient = Ingredient(
+            name="Limited cheese",
+            unit="g",
+            stock=1,
+            min_stock=0,
+            unit_cost="0.2500",
+        )
+        product = db.session.get(Product, self.product_id)
+        product.addons.append(
+            ProductAddon(ingredient=ingredient, quantity_used="2.000", unit_price="0.50")
+        )
+        db.session.add(ingredient)
+        db.session.commit()
+        response = self.client.post(
+            "/pos",
+            data={
+                "checkout_token": "addon-insufficient-stock",
+                "accepted_by_id": str(
+                    db.session.scalar(
+                        db.select(User).where(User.username == "cashier")
+                    ).id
+                ),
+                "cart": json.dumps(
+                    [{"id": product.id, "quantity": 1, "addons": [ingredient.id]}]
+                ),
+                "payments": "[]",
+                "discount": "0",
+                "discount_kind": "amount",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Not enough Limited cheese", response.data)
+        self.assertIsNone(
+            db.session.scalar(
+                db.select(Order).where(
+                    Order.checkout_token == "addon-insufficient-stock"
+                )
+            )
+        )
+        db.session.refresh(product)
+        db.session.refresh(ingredient)
+        self.assertEqual(product.stock, 10)
+        self.assertEqual(str(ingredient.stock), "1.000")
 
     def test_expenses_settings_team_and_reports(self):
         data = {

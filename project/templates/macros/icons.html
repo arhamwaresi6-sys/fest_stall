@@ -1,0 +1,5 @@
+{% macro icon(name, classes='') -%}
+<svg class="icon {{ classes }}" aria-hidden="true" focusable="false">
+  <use href="{{ url_for('static', filename='icons.svg') }}#{{ name }}"></use>
+</svg>
+{%- endmacro %}

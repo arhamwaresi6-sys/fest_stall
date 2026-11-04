@@ -41,4 +41,5 @@ class OrderItem(db.Model):
     line_total = db.Column(db.Numeric(12, 2), nullable=False)
     order = db.relationship("Order", back_populates="items")
     product = db.relationship("Product")
+    addons = db.relationship("OrderItemAddon", back_populates="order_item", cascade="all, delete-orphan")
     __table_args__ = (db.CheckConstraint("quantity > 0", name="ck_order_item_quantity_positive"),)
