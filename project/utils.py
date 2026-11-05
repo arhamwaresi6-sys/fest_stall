@@ -5,9 +5,10 @@ from zoneinfo import ZoneInfo
 
 from flask import abort, request
 from flask_login import current_user
+from sqlalchemy import func, select
 
 from .extensions import db
-from .models import AuditLog
+from .models import AuditLog, Order, OrderItem, OrderItemAddon
 
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
@@ -87,6 +88,68 @@ def date_window(start_date, end_date):
     start = datetime.combine(start_date, time.min, tzinfo=tz).astimezone(timezone.utc)
     end = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=tz).astimezone(timezone.utc)
     return start, end
+
+
+def expense_amount_between(expenses, start_date, end_date):
+    total_cents = 0
+    for expense in expenses:
+        amount_cents = int((expense.amount * 100).to_integral_value())
+        duration_days = max(1, expense.duration_days or 1)
+        first_day = min(
+            duration_days,
+            max(0, (start_date - expense.expense_date).days),
+        )
+        after_last_day = min(
+            duration_days, max(0, (end_date - expense.expense_date).days + 1)
+        )
+        if first_day >= after_last_day:
+            continue
+        total_cents += (
+            amount_cents * after_last_day // duration_days
+            - amount_cents * first_day // duration_days
+        )
+    return (Decimal(total_cents) / 100).quantize(CENT)
+
+
+def expense_amount_remaining(expense, as_of):
+    amount_cents = int((expense.amount * 100).to_integral_value())
+    duration_days = max(1, expense.duration_days or 1)
+    elapsed_days = min(
+        duration_days,
+        max(0, (as_of - expense.expense_date).days + 1),
+    )
+    recognized_cents = amount_cents * elapsed_days // duration_days
+    return (Decimal(amount_cents - recognized_cents) / 100).quantize(CENT)
+
+
+def lifetime_sales_totals():
+    revenue = db.session.scalar(
+        select(func.coalesce(func.sum(Order.total), 0)).where(
+            Order.status == "Completed"
+        )
+    ) or ZERO
+    item_cost = db.session.scalar(
+        select(func.coalesce(func.sum(OrderItem.unit_cost * OrderItem.quantity), 0))
+        .join(Order)
+        .where(Order.status == "Completed")
+    ) or ZERO
+    addon_cost = db.session.scalar(
+        select(
+            func.coalesce(
+                func.sum(
+                    OrderItemAddon.unit_cost
+                    * OrderItemAddon.quantity_per_product
+                    * OrderItem.quantity
+                ),
+                0,
+            )
+        )
+        .select_from(OrderItemAddon)
+        .join(OrderItem)
+        .join(Order)
+        .where(Order.status == "Completed")
+    ) or ZERO
+    return revenue, item_cost + addon_cost
 
 
 def selected_window(default_days=1):

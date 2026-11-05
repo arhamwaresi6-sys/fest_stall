@@ -1,15 +1,16 @@
-import csv
+from datetime import datetime
 from decimal import Decimal
-from io import StringIO
 
-from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import or_, select
 from sqlalchemy.orm import joinedload
+from zoneinfo import ZoneInfo
 
 from ...extensions import db
-from ...models import Ingredient, IngredientTransaction, InventoryTransaction, Product
-from ...utils import audit, cost_value, quantity_value, role_required
+from ...models import Ingredient, IngredientTransaction, InventoryTransaction, Product, Setting
+from ...pdf_exports import build_pdf_response, pdf_money
+from ...utils import FINANCIAL_ROLES, audit, cost_value, quantity_value, role_required
 
 bp = Blueprint("inventory", __name__, url_prefix="/inventory")
 
@@ -192,22 +193,115 @@ def update_ingredient_details(ingredient_id):
     return redirect(url_for("inventory.ingredients"))
 
 
-@bp.get("/export.csv")
+@bp.get("/export.pdf")
 @login_required
-def export_csv():
+def export_pdf():
     products = db.session.scalars(inventory_statement()).all()
-    output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Product", "Category", "Quantity on hand", "Low-stock threshold", "Status"])
+    financial_access = current_user.role in FINANCIAL_ROLES
+    currency = "BDT "
+    if financial_access:
+        currency_setting = db.session.get(Setting, "currency")
+        currency = currency_setting.value.strip() if currency_setting and currency_setting.value.strip() else "BDT "
+    currency_label = "BDT" if not currency.isascii() else currency
+    status_filter = request.args.get("status", "")
+    filter_labels = {
+        "out": "Out of stock",
+        "low": "Running low",
+        "healthy": "In stock",
+    }
+    search = request.args.get("q", "").strip()
+    period = "Current stock"
+    if status_filter in filter_labels:
+        period += f" · {filter_labels[status_filter]}"
+    if search:
+        period += f" · Search: {search}"
+    total_units = sum(product.stock for product in products)
+    low_stock_count = sum(0 < product.stock <= product.min_stock for product in products)
+    out_stock_count = sum(product.stock == 0 for product in products)
+    cost_value_total = (
+        sum((product.cost_price * product.stock for product in products), Decimal("0.00"))
+        if financial_access
+        else None
+    )
+    retail_value_total = (
+        sum((product.selling_price * product.stock for product in products), Decimal("0.00"))
+        if financial_access
+        else None
+    )
+    rows = []
     for product in products:
-        name = f"'{product.name}" if product.name.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")) else product.name
-        category = f"'{product.category}" if product.category.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")) else product.category
         status = "Out of stock" if product.stock == 0 else "Low stock" if product.stock <= product.min_stock else "In stock"
-        writer.writerow([name, category, product.stock, product.min_stock, status])
-    return Response(
-        output.getvalue(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=inventory.csv"},
+        row = [
+            (product.name, False),
+            (product.category, False),
+            ("Available" if product.is_available else "Hidden", False),
+            (status, False),
+        ]
+        if financial_access:
+            row.extend(
+                [
+                    (pdf_money(product.selling_price, currency), True),
+                    (pdf_money(product.cost_price, currency), True),
+                ]
+            )
+        row.extend([(f"{product.stock:,}", True), (f"{product.min_stock:,}", True)])
+        if financial_access:
+            row.extend(
+                [
+                    (pdf_money(product.cost_price * product.stock, currency), True),
+                    (pdf_money(product.selling_price * product.stock, currency), True),
+                ]
+            )
+        rows.append(row)
+    if not rows:
+        column_count = 10 if financial_access else 6
+        rows.append(
+            [("No products match these filters.", False)]
+            + [("", False)] * (column_count - 1)
+        )
+    return build_pdf_response(
+        title="Product inventory",
+        subtitle=(
+            "On-hand stock, reorder thresholds, availability, and estimated inventory value."
+            if financial_access
+            else "On-hand quantities, reorder thresholds, and stock status."
+        ),
+        period=period,
+        generated_at=datetime.now(ZoneInfo("Asia/Dhaka")).strftime("%d %b %Y, %I:%M %p"),
+        metrics=[
+            ("Products", f"{len(products):,}"),
+            ("Units on hand", f"{total_units:,}"),
+            ("Running low", f"{low_stock_count:,}"),
+        ]
+        + (
+            [
+                ("Inventory cost", pdf_money(cost_value_total, currency)),
+                ("Menu value", pdf_money(retail_value_total, currency)),
+            ]
+            if financial_access
+            else []
+        ),
+        columns=[
+            "Product",
+            "Category",
+            "Availability",
+            "Stock status",
+        ]
+        + (
+            ["Sale price", "Unit cost", "On hand", "Reorder at", "Stock cost", "Menu value"]
+            if financial_access
+            else ["On hand", "Reorder at"]
+        ),
+        rows=rows,
+        filename="product-inventory.pdf",
+        note=(
+            (
+                f"Values shown in {currency_label}. Stock cost and menu value are estimates "
+                "based on each product's current quantity and recorded unit price."
+            )
+            if financial_access
+            else "Inventory values reflect current on-hand quantities; hidden products are marked separately."
+        ),
     )
 
 

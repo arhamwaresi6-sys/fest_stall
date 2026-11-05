@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
@@ -29,7 +29,7 @@ bp = Blueprint("sales", __name__)
 ORDER_ACCEPTOR_ROLES = ("ROOT", "OWNER", "MANAGER", "CASHIER")
 
 
-def restore_order_stock(order, kind, reason):
+def restore_order_stock(order, kind, reason, *, order_id=None):
     quantities = {}
     ingredient_quantities = {}
     for item in order.items:
@@ -52,7 +52,7 @@ def restore_order_stock(order, kind, reason):
         db.session.add(InventoryTransaction(product_id=product.id, previous_quantity=previous,
                                             quantity_changed=quantity, new_quantity=product.stock,
                                             kind=kind, reason=f"Order {order.order_number}: {reason}",
-                                            user_id=current_user.id, order_id=order.id))
+                                            user_id=current_user.id, order_id=order_id))
     ingredients = db.session.scalars(
         select(Ingredient)
         .where(Ingredient.id.in_(sorted(ingredient_quantities)))
@@ -72,7 +72,7 @@ def restore_order_stock(order, kind, reason):
                 kind=kind,
                 reason=f"Order {order.order_number}: {reason}",
                 user_id=current_user.id,
-                order_id=order.id,
+                order_id=order_id,
             )
         )
 
@@ -396,6 +396,34 @@ def order_detail(order_id):
                            payment_methods=PAYMENT_METHODS, payment_names=PAYMENT_METHODS)
 
 
+@bp.post("/orders/<int:order_id>/delete")
+@login_required
+@role_required("OWNER", "MANAGER")
+def delete_order(order_id):
+    order = db.session.scalar(
+        select(Order)
+        .options(selectinload(Order.items).selectinload(OrderItem.addons))
+        .where(Order.id == order_id)
+        .with_for_update()
+    )
+    if order is None:
+        from flask import abort
+        abort(404)
+    if order.status == "Completed":
+        restore_order_stock(order, "Order deletion", "Order permanently deleted")
+    db.session.execute(
+        delete(InventoryTransaction).where(InventoryTransaction.order_id == order.id)
+    )
+    db.session.execute(
+        delete(IngredientTransaction).where(IngredientTransaction.order_id == order.id)
+    )
+    audit("Deleted order", "Order", order.id, order.order_number)
+    db.session.delete(order)
+    db.session.commit()
+    flash(f"Order {order.order_number} deleted and applicable stock restored.", "success")
+    return redirect(url_for("sales.orders"))
+
+
 @bp.post("/orders/<int:order_id>/payments")
 @login_required
 @role_required("OWNER", "MANAGER", "CASHIER")
@@ -451,7 +479,7 @@ def void_order(order_id):
     if order.status != "Completed" or len(reason) < 4:
         flash("Enter a cancellation reason (at least 4 characters) for a completed order.", "danger")
         return redirect(url_for("sales.order_detail", order_id=order.id))
-    restore_order_stock(order, "Cancellation", reason)
+    restore_order_stock(order, "Cancellation", reason, order_id=order.id)
     for payment in order.payments:
         if payment.status == "Recorded":
             payment.status = "Refunded"
@@ -482,7 +510,7 @@ def refund_order(order_id):
     if order.status != "Completed" or len(reason) < 4:
         flash("Enter a refund reason (at least 4 characters) for a completed order.", "danger")
         return redirect(url_for("sales.order_detail", order_id=order.id))
-    restore_order_stock(order, "Refund", reason)
+    restore_order_stock(order, "Refund", reason, order_id=order.id)
     for payment in order.payments:
         if payment.status == "Recorded":
             payment.status = "Refunded"

@@ -1,5 +1,69 @@
-{% extends 'base.html' %}{% from "macros/icons.html" import icon %}{% block title %}Expenses{% endblock %}{% block page_title %}Expenses{% endblock %}{% block content %}
-<div class="page-heading"><div><p class="eyebrow">OPERATING COSTS</p><h1>Expenses</h1><p class="muted">Track the costs around your sales, separately from product costs.</p></div><a class="btn btn-primary" href="{{ url_for('expenses.create') }}">＋ Record expense</a></div>
-<form method="get" class="filter-bar"><label>Category<select name="category"><option value="">All categories</option>{% for cat in categories %}<option {% if selected_category == cat %}selected{% endif %}>{{ cat }}</option>{% endfor %}</select></label><label>From<input type="date" name="date_from" value="{{ date_from or '' }}"></label><label>To<input type="date" name="date_to" value="{{ date_to or '' }}"></label><button class="btn btn-dark">Filter</button><a class="filter-reset" href="{{ url_for('expenses.index') }}">Clear</a></form>
-<div class="panel table-panel"><div class="table-heading"><b>Expense records</b><small>Changes are logged for review.</small></div>{% if expenses %}<div class="table-scroll"><table><thead><tr><th>DATE</th><th>TITLE</th><th>CATEGORY</th><th>DESCRIPTION</th><th>RECORDED BY</th><th>AMOUNT</th><th></th></tr></thead><tbody>{% for expense in expenses %}<tr><td>{{ expense.expense_date.strftime('%d %b %Y') }}</td><td><b>{{ expense.title }}</b></td><td>{{ expense.category }}</td><td>{{ expense.description or '—' }}</td><td>{{ expense.created_by.full_name }}</td><td><b>{{ expense.amount|money }}</b></td><td>{% if expense.receipt_filename %}<a class="text-link" href="{{ url_for('main.private_upload', filename=expense.receipt_filename) }}" target="_blank" rel="noopener">Receipt</a> · {% endif %}<a class="text-link" href="{{ url_for('expenses.edit', expense_id=expense.id) }}">Edit</a></td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty-state"><span class="empty-icon">{{ icon('receipt') }}</span><h3>No expenses yet</h3><p>Keep operating costs separate from the product cost used in gross profit.</p><a class="btn btn-primary" href="{{ url_for('expenses.create') }}">{{ icon('plus') }} Record an expense</a></div>{% endif %}</div>
+{% extends 'base.html' %}
+{% from "macros/icons.html" import icon %}
+{% block title %}Expenses{% endblock %}
+{% block page_title %}Expenses{% endblock %}
+{% block content %}
+<div class="expense-page">
+<div class="page-heading">
+  <div>
+    <p class="eyebrow">MONEY SPENT & COSTS</p>
+    <h1>Expense tracker</h1>
+    <p class="muted">See what you recorded, what has counted against profit, and what is still scheduled.</p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('expenses.create') }}">{{ icon('plus') }} Record expense</a>
+</div>
+<div class="expense-flow-note">
+  <span class="expense-flow-icon">i</span>
+  <p><b>Committed</b> is the full recorded amount. <b>Charged to profit</b> is the scheduled portion through today. <b>Remaining</b> is the committed amount minus scheduled charges; it is not reduced by how much profit the shop made. The recorded date counts as day one.</p>
+</div>
+<div class="stat-grid stat-grid-three expense-overview-stats">
+  <article class="stat-card">
+    <div class="stat-top"><span>Total committed</span><span class="stat-icon">∑</span></div>
+    <strong>{{ committed_expense_total|money }}</strong>
+    <small>Full value of all expense records</small>
+  </article>
+  <article class="stat-card">
+    <div class="stat-top"><span>Charged to profit</span><span class="stat-icon yellow-icon">−</span></div>
+    <strong>{{ expense_recognized_total|money }}</strong>
+    <small>Recognized through today</small>
+  </article>
+  <article class="stat-card">
+    <div class="stat-top"><span>Still scheduled</span><span class="stat-icon mint-icon">◷</span></div>
+    <strong>{{ expense_remaining_total|money }}</strong>
+    <small>Future deductions not yet recognized</small>
+  </article>
+</div>
+<form method="get" class="filter-bar">
+  <label>Category<select name="category"><option value="">All categories</option>{% for cat in categories %}<option {% if selected_category == cat %}selected{% endif %}>{{ cat }}</option>{% endfor %}</select></label>
+  <label>Recorded from<input type="date" name="date_from" value="{{ date_from or '' }}"></label>
+  <label>To<input type="date" name="date_to" value="{{ date_to or '' }}"></label>
+  <button class="btn btn-dark">Filter</button>
+  <a class="filter-reset" href="{{ url_for('expenses.index') }}">Clear</a>
+</form>
+<div class="panel table-panel expense-ledger">
+  <div class="table-heading"><b>Expense ledger</b><small>{{ expenses|length }} records shown · changes are audited</small></div>
+  {% if expenses %}
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>RECORDED</th><th>EXPENSE</th><th>ALLOCATION</th><th>COMMITTED</th><th>CHARGED TO PROFIT</th><th>REMAINING</th><th></th></tr></thead>
+      <tbody>
+      {% for expense in expenses %}
+        <tr>
+          <td data-label="Recorded">{{ expense.expense_date.strftime('%d %b %Y') }}</td>
+          <td data-label="Expense"><b>{{ expense.title }}</b><small class="table-subtext">{{ expense.category }}{% if expense.description %} · {{ expense.description }}{% endif %}</small></td>
+          <td data-label="Allocation"><span class="expense-type-pill">{{ 'One-time' if expense.duration_days == 1 else 'Spread · ' ~ expense.duration_days ~ ' days' }}</span><small class="table-subtext">Starts {{ expense_start_by_id[expense.id].strftime('%d %b %Y') }}</small></td>
+          <td data-label="Committed"><b>{{ expense.amount|money }}</b></td>
+          <td data-label="Charged to profit">{{ expense_recognized_by_id[expense.id]|money }}</td>
+          <td data-label="Remaining"><b>{{ expense_remaining_by_id[expense.id]|money }}</b></td>
+          <td class="expense-actions" data-label="Actions">{% if expense.receipt_filename %}<a class="text-link" href="{{ url_for('main.private_upload', filename=expense.receipt_filename) }}" target="_blank" rel="noopener">Receipt</a>{% endif %}<a class="text-link" href="{{ url_for('expenses.edit', expense_id=expense.id) }}">Edit</a><form method="post" action="{{ url_for('expenses.delete', expense_id=expense.id) }}" data-confirm="Permanently delete {{ expense.title }} ({{ expense.amount|money }})? This removes it from profit calculations."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="link-button danger-text">Delete</button></form></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state"><span class="empty-icon">{{ icon('receipt') }}</span><h3>No expenses match these filters</h3><p>Clear the filters or record an expense to start tracking costs.</p><a class="btn btn-primary" href="{{ url_for('expenses.create') }}">{{ icon('plus') }} Record expense</a></div>
+  {% endif %}
+</div>
+</div>
 {% endblock %}

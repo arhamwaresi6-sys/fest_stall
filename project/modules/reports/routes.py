@@ -1,18 +1,45 @@
-import csv
 from collections import defaultdict
+from datetime import datetime
 from decimal import Decimal
-from io import StringIO
+from zoneinfo import ZoneInfo
 
-from flask import Blueprint, Response, render_template
+from flask import Blueprint, render_template
 from flask_login import login_required
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectinload
 
 from ...extensions import db
-from ...models import Expense, Order, OrderItem, Payment
-from ...utils import FINANCIAL_ROLES, PAYMENT_METHODS, net_order_item_amounts, order_item_cost, role_required, selected_window
+from ...models import Expense, Order, OrderItem, Payment, Setting
+from ...pdf_exports import build_pdf_response, pdf_money
+from ...utils import FINANCIAL_ROLES, PAYMENT_METHODS, expense_amount_between, expense_amount_remaining, lifetime_sales_totals, net_order_item_amounts, order_item_cost, role_required, selected_window
 
 bp = Blueprint("reports", __name__, url_prefix="/reports")
+
+
+def product_performance(orders):
+    rows = defaultdict(
+        lambda: {
+            "units": 0,
+            "revenue": Decimal("0.00"),
+            "cost": Decimal("0.00"),
+            "orders": set(),
+        }
+    )
+    for order in orders:
+        for item, net in zip(order.items, net_order_item_amounts(order)):
+            row = rows[item.product_name]
+            row["units"] += item.quantity
+            row["cost"] += order_item_cost(item)
+            row["orders"].add(order.id)
+            row["revenue"] += net
+    return sorted(
+        rows.items(),
+        key=lambda item: (
+            item[1]["revenue"] - item[1]["cost"],
+            item[1]["units"],
+        ),
+        reverse=True,
+    )
 
 
 @bp.get("/")
@@ -30,22 +57,39 @@ def index():
         .order_by(Order.created_at)
     ).all()
     completed = [o for o in orders if o.status == "Completed"]
-    expenses = db.session.scalars(select(Expense).where(Expense.expense_date >= start_date, Expense.expense_date <= end_date).order_by(Expense.expense_date)).all()
-    expense_by_category = defaultdict(lambda: Decimal("0.00"))
-    for expense in expenses:
-        expense_by_category[expense.category] += expense.amount
+    all_expenses = db.session.scalars(
+        select(Expense).order_by(Expense.expense_date)
+    ).all()
+    period_expense_count = sum(
+        1
+        for expense in all_expenses
+        if expense_amount_between([expense], start_date, end_date) > 0
+    )
+    lifetime_expense_rows = db.session.execute(
+        select(Expense.category, func.sum(Expense.amount))
+        .group_by(Expense.category)
+        .order_by(Expense.category)
+    ).all()
+    lifetime_expense_total = sum(
+        (expense.amount for expense in all_expenses), Decimal("0.00")
+    )
+    lifetime_expense_remaining = sum(
+        (
+            expense_amount_remaining(expense, end_date)
+            for expense in all_expenses
+        ),
+        Decimal("0.00"),
+    )
+    lifetime_revenue, lifetime_cogs = lifetime_sales_totals()
+    lifetime_net_profit = (
+        lifetime_revenue
+        - lifetime_cogs
+        - (lifetime_expense_total - lifetime_expense_remaining)
+    )
     revenue = sum((o.total for o in completed), Decimal("0.00"))
     cogs = sum((order_item_cost(i) for o in completed for i in o.items), Decimal("0.00"))
-    expense_total = sum((e.amount for e in expenses), Decimal("0.00"))
-    product_rows = defaultdict(lambda: {"units": 0, "revenue": Decimal("0.00"), "cost": Decimal("0.00"), "orders": set()})
-    for order in completed:
-        for item, net_line in zip(order.items, net_order_item_amounts(order)):
-            row = product_rows[item.product_name]
-            row["units"] += item.quantity
-            row["cost"] += order_item_cost(item)
-            row["orders"].add(order.id)
-            row["revenue"] += net_line
-    products = sorted(product_rows.items(), key=lambda x: (x[1]["revenue"]-x[1]["cost"], x[1]["units"]), reverse=True)
+    expense_total = expense_amount_between(all_expenses, start_date, end_date)
+    products = product_performance(completed)
     payments = db.session.scalars(
         select(Payment)
         .options(joinedload(Payment.order))
@@ -61,35 +105,86 @@ def index():
         row["sales"] += order.total
     cashier_rows = sorted(cashier_rows.items(), key=lambda x: x[1]["sales"], reverse=True)
     return render_template("reports/index.html", start_date=start_date, end_date=end_date, orders=completed,
-                           expenses=expenses, revenue=revenue, cogs=cogs, expense_total=expense_total,
+                           expenses=all_expenses, revenue=revenue, cogs=cogs, expense_total=expense_total,
                            net_profit=revenue-cogs-expense_total, products=products,
                            payment_summary=payment_summary, payment_names=PAYMENT_METHODS,
                            cashier_rows=cashier_rows, payment_count=payment_count,
-                           expense_by_category=sorted(expense_by_category.items()))
+                           lifetime_expense_by_category=[
+                               (category, amount)
+                               for category, amount in lifetime_expense_rows
+                           ],
+                           lifetime_expense_total=lifetime_expense_total,
+                           lifetime_expense_remaining=lifetime_expense_remaining,
+                           lifetime_net_profit=lifetime_net_profit,
+                           period_expense_count=period_expense_count)
 
 
-@bp.get("/products.csv")
+@bp.get("/products.pdf")
 @login_required
 @role_required(*FINANCIAL_ROLES)
-def products_csv():
+def products_pdf():
     start_date, end_date, start, end = selected_window(7)
     orders = db.session.scalars(
         select(Order)
         .options(selectinload(Order.items).selectinload(OrderItem.addons))
         .where(Order.status == "Completed", Order.created_at >= start, Order.created_at < end)
     ).all()
-    rows = defaultdict(lambda: {"units": 0, "revenue": Decimal("0.00"), "cost": Decimal("0.00"), "orders": set()})
-    for order in orders:
-        for item, net in zip(order.items, net_order_item_amounts(order)):
-            row = rows[item.product_name]
-            row["units"] += item.quantity
-            row["cost"] += order_item_cost(item)
-            row["orders"].add(order.id)
-            row["revenue"] += net
-    output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Product", "Units sold", "Sales revenue", "Cost of goods", "Gross profit", "Orders"])
-    for name, row in sorted(rows.items(), key=lambda x: x[1]["revenue"]-x[1]["cost"], reverse=True):
-        safe_name = f"'{name}" if name.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")) else name
-        writer.writerow([safe_name, row["units"], row["revenue"], row["cost"], row["revenue"]-row["cost"], len(row["orders"])])
-    return Response(output.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename=product-performance-{start_date}-{end_date}.csv"})
+    products = product_performance(orders)
+    currency_setting = db.session.get(Setting, "currency")
+    currency = currency_setting.value.strip() if currency_setting and currency_setting.value.strip() else "BDT "
+    currency_label = "BDT" if not currency.isascii() else currency
+    revenue = sum((row["revenue"] for _, row in products), Decimal("0.00"))
+    cost = sum((row["cost"] for _, row in products), Decimal("0.00"))
+    gross_profit = revenue - cost
+    order_count = len({order.id for order in orders})
+    rows = []
+    for rank, (name, row) in enumerate(products, start=1):
+        profit = row["revenue"] - row["cost"]
+        margin = profit * 100 / row["revenue"] if row["revenue"] else Decimal("0")
+        average_units = Decimal(row["units"]) / len(row["orders"]) if row["orders"] else Decimal("0")
+        rows.append(
+            [
+                (str(rank), True),
+                (name, False),
+                (f"{row['units']:,}", True),
+                (f"{len(row['orders']):,}", True),
+                (f"{average_units:.1f}", True),
+                (pdf_money(row["revenue"], currency), True),
+                (pdf_money(row["cost"], currency), True),
+                (pdf_money(profit, currency), True),
+                (f"{margin:.1f}%", True),
+            ]
+        )
+    if not rows:
+        rows.append([("—", False), ("No completed product sales in this period.", False)] + [("", False)] * 7)
+    margin_total = gross_profit * 100 / revenue if revenue else Decimal("0")
+    return build_pdf_response(
+        title="Product performance",
+        subtitle="Sales volume, discount-adjusted revenue, costs, and gross profit by product.",
+        period=f"{start_date:%d %b %Y} – {end_date:%d %b %Y}",
+        generated_at=datetime.now(ZoneInfo("Asia/Dhaka")).strftime("%d %b %Y, %I:%M %p"),
+        metrics=[
+            ("Completed orders", f"{order_count:,}"),
+            ("Products sold", f"{len(products):,}"),
+            ("Net revenue", pdf_money(revenue, currency)),
+            ("Cost of goods", pdf_money(cost, currency)),
+            ("Gross profit", pdf_money(gross_profit, currency)),
+        ],
+        columns=[
+            "Rank",
+            "Product",
+            "Units sold",
+            "Orders",
+            "Units / order",
+            "Net revenue",
+            "Cost of goods",
+            "Gross profit",
+            "Margin",
+        ],
+        rows=rows,
+        filename=f"product-performance-{start_date}-{end_date}.pdf",
+        note=(
+            f"Values shown in {currency_label}. Net revenue includes allocated order discounts; "
+            f"overall gross margin for this period is {margin_total:.1f}%."
+        ),
+    )

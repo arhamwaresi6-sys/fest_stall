@@ -1,11 +1,12 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
+from sqlalchemy.orm import selectinload
 from decimal import Decimal
 from ...image_uploads import save_image
 
 from ...extensions import db
-from ...models import Ingredient, InventoryTransaction, Order, OrderItem, Product, ProductAddon, Setting
+from ...models import Ingredient, IngredientTransaction, InventoryTransaction, Order, OrderItem, Product, ProductAddon, Setting
 from ...utils import PRODUCT_ROLES, audit, decimal_value, quantity_value, role_required
 
 bp = Blueprint("products", __name__, url_prefix="/products")
@@ -174,4 +175,73 @@ def archive(product_id):
     audit("Archived product", "Product", product.id, product.name)
     db.session.commit()
     flash("Product archived. Past sales remain available in reports.", "success")
+    return redirect(url_for("products.index"))
+
+
+@bp.post("/<int:product_id>/availability")
+@login_required
+@role_required(*PRODUCT_ROLES)
+def toggle_availability(product_id):
+    product = db.get_or_404(Product, product_id)
+    product.is_available = not product.is_available
+    action = "Restored product to sales" if product.is_available else "Hid product from sales"
+    audit(action, "Product", product.id, product.name)
+    db.session.commit()
+    flash(
+        f"{product.name} is now {'available' if product.is_available else 'hidden'} from new sales.",
+        "success",
+    )
+    return redirect(url_for("products.index"))
+
+
+@bp.post("/<int:product_id>/delete")
+@login_required
+@role_required(*PRODUCT_ROLES)
+def delete_product(product_id):
+    product = db.session.scalar(
+        select(Product).where(Product.id == product_id).with_for_update()
+    )
+    if product is None:
+        from flask import abort
+        abort(404)
+    order_ids = select(OrderItem.order_id).where(OrderItem.product_id == product.id).distinct()
+    orders = db.session.scalars(
+        select(Order)
+        .options(selectinload(Order.items).selectinload(OrderItem.addons))
+        .where(Order.id.in_(order_ids))
+        .order_by(Order.id)
+        .with_for_update()
+    ).all()
+    if orders:
+        from ..sales.routes import restore_order_stock
+        for order in orders:
+            if order.status == "Completed":
+                restore_order_stock(
+                    order,
+                    "Order deletion",
+                    f"Product {product.name} deleted with this order",
+                )
+        db.session.execute(
+            delete(InventoryTransaction).where(InventoryTransaction.order_id.in_(order_ids))
+        )
+        db.session.execute(
+            delete(IngredientTransaction).where(IngredientTransaction.order_id.in_(order_ids))
+        )
+        for order in orders:
+            db.session.delete(order)
+    db.session.execute(
+        delete(InventoryTransaction).where(InventoryTransaction.product_id == product.id)
+    )
+    audit(
+        "Deleted product",
+        "Product",
+        product.id,
+        f"{product.name}; deleted {len(orders)} associated order(s)",
+    )
+    db.session.delete(product)
+    db.session.commit()
+    flash(
+        f"{product.name} deleted along with {len(orders)} associated order(s).",
+        "success",
+    )
     return redirect(url_for("products.index"))

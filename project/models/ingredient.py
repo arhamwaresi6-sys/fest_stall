@@ -34,7 +34,7 @@ class IngredientTransaction(db.Model):
     kind = db.Column(db.String(30), nullable=False, default="Adjustment")
     reason = db.Column(db.String(255), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    order_id = db.Column(db.Integer, db.ForeignKey("order.id"))
+    order_id = db.Column(db.Integer, db.ForeignKey("order.id", ondelete="CASCADE"))
     created_at = db.Column(
         db.DateTime(timezone=True),
         nullable=False,
@@ -48,7 +48,7 @@ class IngredientTransaction(db.Model):
 class ProductAddon(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     product_id = db.Column(
-        db.Integer, db.ForeignKey("product.id"), nullable=False, index=True
+        db.Integer, db.ForeignKey("product.id", ondelete="CASCADE"), nullable=False, index=True
     )
     ingredient_id = db.Column(
         db.Integer, db.ForeignKey("ingredient.id"), nullable=False, index=True
@@ -67,7 +67,7 @@ class ProductAddon(db.Model):
 class OrderItemAddon(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     order_item_id = db.Column(
-        db.Integer, db.ForeignKey("order_item.id"), nullable=False, index=True
+        db.Integer, db.ForeignKey("order_item.id", ondelete="CASCADE"), nullable=False, index=True
     )
     ingredient_id = db.Column(
         db.Integer, db.ForeignKey("ingredient.id", ondelete="SET NULL"), nullable=True
@@ -79,4 +79,3 @@ class OrderItemAddon(db.Model):
     unit_cost = db.Column(db.Numeric(12, 4), nullable=False)
     order_item = db.relationship("OrderItem", back_populates="addons")
     ingredient = db.relationship("Ingredient")
-

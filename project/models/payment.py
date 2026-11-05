@@ -4,7 +4,7 @@ from ..extensions import db
 
 class Payment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    order_id = db.Column(db.Integer, db.ForeignKey("order.id"), nullable=False, index=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("order.id", ondelete="CASCADE"), nullable=False, index=True)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     method = db.Column(db.String(20), nullable=False, index=True)
     status = db.Column(db.String(20), nullable=False, default="Recorded", index=True)

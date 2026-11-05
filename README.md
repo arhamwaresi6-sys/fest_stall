@@ -30,7 +30,7 @@ flask --app run.py create-root
 python run.py
 ```
 
-For an existing application database, skip `init-db` and run `flask --app run.py db upgrade` before `check-db` and `create-root`. The migration preserves existing data and enables the new account roles (updating a role check constraint where the database supports it).
+For an existing application database, skip `init-db` and run `flask --app run.py db upgrade` before `check-db` and `create-root`. Migrations preserve existing records while updating account roles and delete-related foreign-key behavior.
 
 Open <http://127.0.0.1:5000> and sign in with the root account. The root command asks for the password without storing it in the source tree.
 
@@ -54,9 +54,13 @@ python -m unittest discover -s tests -v
 
 The only payment methods are **By hand (cash)** and **bKash**. Payments are entered by the team; the app does not connect to bKash or initiate a transaction. Split payments are supported. Root and managers can apply a fixed-amount or percentage discount at checkout; the server validates the discount, recomputes totals, and allocates discounts in reports. Checkout checks stock, stores product price and cost snapshots, records inventory movement, and saves the order and payments in one database transaction.
 
+Root and managers can permanently delete orders; completed orders return their product and ingredient stock. Permanently deleting a product also deletes every order containing it, including mixed-product orders and their payments, and restores stock for the remaining items. Use **Hide from sales** to temporarily remove a product from the POS while keeping its product record and sales history.
+
 Managers can create ingredient stock records from **Inventory → Ingredient inventory**, choosing a unit (piece, g, kg, ml, or L), on-hand quantity, low-stock threshold, and unit cost. Add a product extra in the product form by selecting an ingredient, entering the ingredient quantity used per product, and setting its additional sale price. At checkout, staff can select extras for each cart item; the server recomputes their prices, validates ingredient stock, and deducts both product and ingredient inventory together. Order snapshots preserve the selected extras and costs, and cancellation/refund restores the recorded ingredient quantities.
 
-The dashboard and reports compare products by units sold, net sales revenue after proportional discounts, product and add-on costs, and gross profit for the selected dates. Operating expenses are counted separately in estimated net profit.
+The dashboard and reports compare products by units sold, net sales revenue after proportional discounts, product and add-on costs, and gross profit for the selected dates. Expense records distinguish the full committed amount from cost recognized against profit: choose a one-time deduction or allocate the amount evenly across a duration, starting on the recorded date. Rounding cents are distributed so the schedule exactly matches the committed amount. Period net profit subtracts the cost allocated to that period; all-time net profit subtracts recognized costs to date, while the remaining scheduled balance is shown separately. Existing expenses retain their saved dates and durations. Managers can delete expense records from the expense list; deletions are audited and attached receipt files are removed.
+
+Inventory and product-performance downloads are landscape PDFs with red-and-white styling, period/filter context, summary totals, detailed tables, and page numbers. Inventory PDFs use the current inventory filters; product-performance PDFs use the selected report dates.
 
 ## Production notes
 

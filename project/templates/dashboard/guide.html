@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}Overview guide{% endblock %}
+{% block page_title %}Overview guide{% endblock %}
+{% block content %}
+<div class="page-heading guide-heading">
+  <div>
+    <p class="eyebrow">A BEGINNER'S GUIDE</p>
+    <h1>How to read your overview</h1>
+    <p class="muted">A simple guide to sales, costs, profit, and the daily expense schedule.</p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('main.dashboard') }}">← Back to overview</a>
+</div>
+
+<section class="guide-intro panel">
+  <span class="guide-intro-mark">?</span>
+  <div>
+    <h2>Start with the date filter</h2>
+    <p>The selected dates control period sales, orders, product costs, scheduled expense deductions, and period net profit. The all-time expense and all-time net profit figures cover the business history, not just those selected dates.</p>
+  </div>
+</section>
+
+<div class="guide-card-grid">
+  <article class="panel guide-card">
+    <span class="guide-number">01</span>
+    <h2>Sales revenue</h2>
+    <p>Money from completed orders during the selected dates. Cancelled and refunded orders are not counted as sales.</p>
+  </article>
+  <article class="panel guide-card">
+    <span class="guide-number">02</span>
+    <h2>Orders</h2>
+    <p>How many completed orders were made in the selected period.</p>
+  </article>
+  <article class="panel guide-card">
+    <span class="guide-number">03</span>
+    <h2>Gross profit</h2>
+    <p>Sales revenue minus the saved product and ingredient costs for those sales. It does not subtract stall rent or other operating expenses. Do not record the same stocked ingredient purchase here as well, or its cost may be counted twice.</p>
+    <div class="guide-formula">Revenue − product costs</div>
+  </article>
+  <article class="panel guide-card">
+    <span class="guide-number">04</span>
+    <h2>Expense cost recognized</h2>
+    <p>The scheduled part of expenses charged against profit during the selected dates. It is not necessarily the same as the full amount paid or recorded.</p>
+  </article>
+  <article class="panel guide-card">
+    <span class="guide-number">05</span>
+    <h2>All-time position</h2>
+    <p>Shows total expense commitments, how much has been charged to profit, what is still scheduled, and net profit across the full business history.</p>
+  </article>
+  <article class="panel guide-card">
+    <span class="guide-number">06</span>
+    <h2>Period net profit</h2>
+    <p>The estimated result for only the selected dates. This can be negative when costs are higher than sales.</p>
+    <div class="guide-formula">Revenue − product costs − scheduled expense cost</div>
+  </article>
+</div>
+
+<section class="panel guide-example">
+  <div>
+    <p class="eyebrow">A QUICK EXAMPLE</p>
+    <h2>How a 30-day booking is deducted</h2>
+    <p>Suppose a stall booking is <b>2,500</b> for <b>30 days</b>, recorded on November 4.</p>
+  </div>
+  <ol class="guide-steps">
+    <li><span>1</span><div><b>November 4</b><small>The recorded date is the first scheduled day.</small></div><strong>about 83.33 charged</strong></li>
+    <li><span>2</span><div><b>November 5</b><small>The second scheduled day is charged.</small></div><strong>about 166.66 charged total</strong></li>
+    <li><span>3</span><div><b>After the second deduction</b><small>The remaining balance is the original cost minus charges through the selected date.</small></div><strong>about 2,333.34 remaining</strong></li>
+    <li><span>4</span><div><b>By the end of day 30</b><small>Rounding cents are spread across the schedule.</small></div><strong>2,500.00 charged</strong></li>
+  </ol>
+  <p class="fine-print">The exact daily amount can vary by a cent so all daily deductions add up exactly to the original expense. The expense page shows the original total, charged-to-profit amount, and remaining scheduled balance separately.</p>
+</section>
+
+<section class="guide-section">
+  <div class="section-heading section-heading-small">
+    <div><p class="eyebrow">WHAT ELSE IS ON THE OVERVIEW</p><h2>Charts and activity</h2></div>
+  </div>
+  <div class="guide-detail-list">
+    <article><span class="guide-detail-icon">A</span><div><h3>Daily expense deductions</h3><p>Lists each date in the selected period, the expenses charged on that date, and that day's total. Scroll inside the panel if there are many dates. The period total should match the expense cost used in period net profit.</p></div></article>
+    <article><span class="guide-detail-icon">B</span><div><h3>Revenue & expenses chart</h3><p>Compares sales revenue and scheduled expense cost by day—or by week for longer periods. It uses the same selected date range.</p></div></article>
+    <article><span class="guide-detail-icon">C</span><div><h3>Payment breakdown</h3><p>Shows recorded cash and bKash payments for completed orders. It tracks how customers paid; it is not another profit calculation.</p></div></article>
+    <article><span class="guide-detail-icon">D</span><div><h3>Product performance</h3><p>Compares products by sales and gross profit before general operating expenses are allocated to products.</p></div></article>
+    <article><span class="guide-detail-icon">E</span><div><h3>Recent orders and stock check</h3><p>Recent orders show latest activity. The stock check highlights products that are low or out of stock.</p></div></article>
+  </div>
+</section>
+
+<div class="guide-footer-actions">
+  <a class="btn btn-primary" href="{{ url_for('main.dashboard') }}">Got it — back to overview</a>
+  {% if current_user.role in ['ROOT','OWNER','MANAGER'] %}<a class="btn btn-light" href="{{ url_for('expenses.index') }}">Review expense schedules</a>{% endif %}
+</div>
+{% endblock %}

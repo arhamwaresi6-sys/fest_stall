@@ -10,7 +10,11 @@ class Expense(db.Model):
     description = db.Column(db.Text)
     receipt_filename = db.Column(db.String(255))
     expense_date = db.Column(db.Date, nullable=False, index=True)
+    duration_days = db.Column(db.Integer, nullable=False, default=1, server_default="1")
     created_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     created_by = db.relationship("User", backref="expenses")
-    __table_args__ = (db.CheckConstraint("amount > 0", name="ck_expense_positive"),)
+    __table_args__ = (
+        db.CheckConstraint("amount > 0", name="ck_expense_positive"),
+        db.CheckConstraint("duration_days > 0", name="ck_expense_duration_positive"),
+    )

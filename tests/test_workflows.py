@@ -1,27 +1,35 @@
 import json
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 
 from PIL import Image
+from sqlalchemy import inspect
 from werkzeug.datastructures import FileStorage
 
 from project import create_app
 from project.extensions import db
 from project.models import (
+    AuditLog,
     Expense,
     Ingredient,
     IngredientTransaction,
+    InventoryTransaction,
     Order,
     OrderItemAddon,
+    Payment,
     Product,
     ProductAddon,
     Setting,
     User,
 )
-from project.utils import order_item_cost
+from project.utils import (
+    expense_amount_between,
+    expense_amount_remaining,
+    order_item_cost,
+)
 from settings import Config
 
 
@@ -76,19 +84,20 @@ class WebsiteWorkflowTests(unittest.TestCase):
         paths = (
             "/",
             "/dashboard",
+            "/overview-guide",
             "/expenses/",
             "/inventory/",
             "/inventory/ingredients",
             "/inventory/?status=low",
             "/inventory/?q=Food",
-            "/inventory/export.csv",
+            "/inventory/export.pdf",
             "/orders",
             "/pos",
             "/products/",
             "/products/new",
             "/products/1/edit",
             "/reports/",
-            "/reports/products.csv",
+            "/reports/products.pdf",
             "/settings",
             "/team/",
             "/team/new",
@@ -111,9 +120,13 @@ class WebsiteWorkflowTests(unittest.TestCase):
         self.assertNotIn(b"Customer or order label", pos_page)
         self.assertNotIn(b"Order reference", pos_page)
 
-        response = self.client.get("/inventory/export.csv")
-        self.assertEqual(response.mimetype, "text/csv")
-        self.assertIn(b"Test snack", response.data)
+        response = self.client.get("/inventory/export.pdf")
+        self.assertEqual(response.mimetype, "application/pdf")
+        self.assertTrue(response.data.startswith(b"%PDF-"))
+        self.assertIn("inventory.pdf", response.headers["Content-Disposition"])
+        self.assertGreater(len(response.data), 2000)
+        self.assertEqual(self.client.get("/inventory/export.csv").status_code, 404)
+        self.assertEqual(self.client.get("/reports/products.csv").status_code, 404)
 
     def test_registration_requires_root_approval(self):
         self.client.post("/auth/logout")
@@ -280,6 +293,148 @@ class WebsiteWorkflowTests(unittest.TestCase):
             top_revenue_section.index("Test snack"),
         )
 
+    def test_dashboard_spreads_scheduled_expenses_and_shows_all_time_profit(self):
+        root_id = db.session.scalar(
+            db.select(User.id).where(User.username == "root")
+        )
+        db.session.add_all(
+            [
+                Expense(
+                    title="Historical equipment",
+                    category="Equipment",
+                    amount="1000.00",
+                    expense_date=date.today() - timedelta(days=5),
+                    duration_days=10,
+                    created_by_id=root_id,
+                ),
+                Expense(
+                    title="Current packaging",
+                    category="Packaging",
+                    amount="25.00",
+                    expense_date=date.today() - timedelta(days=1),
+                    created_by_id=root_id,
+                ),
+            ]
+        )
+        db.session.commit()
+
+        today = date.today().isoformat()
+        response = self.client.get(f"/dashboard?start={today}&end={today}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Expense still scheduled", response.data)
+        self.assertIn(b"400.00", response.data)
+        self.assertIn(b"Total expense commitments", response.data)
+        self.assertIn(b"1,025.00", response.data)
+        self.assertIn(b"Expense cost recognized", response.data)
+        self.assertIn(b"100.00", response.data)
+        self.assertIn(b"-625.00", response.data)
+        self.assertIn(b"-100.00", response.data)
+        self.assertIn(b"All-time net profit", response.data)
+        self.assertIn(b"Daily expense deductions", response.data)
+        self.assertIn(date.today().strftime("%a, %d %b %Y").encode(), response.data)
+        self.assertIn(b"Historical equipment", response.data)
+        self.assertIn(b"100.00", response.data)
+
+    def test_four_day_expense_schedule_reduces_balance_and_can_make_profit_negative(self):
+        root_id = db.session.scalar(
+            db.select(User.id).where(User.username == "root")
+        )
+        today = date.today()
+        expense = Expense(
+            title="Four day stall booking",
+            category="Equipment",
+            amount=Decimal("2500.00"),
+            expense_date=today - timedelta(days=3),
+            duration_days=30,
+            created_by_id=root_id,
+        )
+        db.session.add(expense)
+        db.session.commit()
+
+        start = (today - timedelta(days=3)).isoformat()
+        end = today.isoformat()
+        dashboard = self.client.get(f"/dashboard?start={start}&end={end}")
+        self.assertEqual(dashboard.status_code, 200)
+        self.assertIn(b"How the result is calculated", dashboard.data)
+        self.assertIn(b"Scheduled expenses are deducted in full", dashboard.data)
+        self.assertIn(b"333.33", dashboard.data)
+        self.assertIn(b"-333.33", dashboard.data)
+        self.assertIn(b"2,166.67", dashboard.data)
+
+        expenses = self.client.get("/expenses/")
+        self.assertEqual(expenses.status_code, 200)
+        self.assertIn(b"333.33", expenses.data)
+        self.assertIn(b"2,166.67", expenses.data)
+
+    def test_booking_date_is_the_first_scheduled_day(self):
+        expense = Expense(
+            title="Stall booking",
+            category="Equipment",
+            amount=Decimal("2500.00"),
+            expense_date=date(2026, 11, 4),
+            duration_days=30,
+        )
+
+        self.assertEqual(
+            expense_amount_between(
+                [expense], date(2026, 11, 4), date(2026, 11, 4)
+            ),
+            Decimal("83.33"),
+        )
+        self.assertEqual(
+            expense_amount_between(
+                [expense], date(2026, 11, 5), date(2026, 11, 5)
+            ),
+            Decimal("83.33"),
+        )
+        self.assertEqual(
+            expense_amount_remaining(expense, date(2026, 11, 4)),
+            Decimal("2416.67"),
+        )
+        self.assertEqual(
+            expense_amount_remaining(expense, date(2026, 11, 5)),
+            Decimal("2333.34"),
+        )
+
+    def test_overview_guide_explains_metrics_and_expense_schedule(self):
+        response = self.client.get("/overview-guide")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"How to read your overview", response.data)
+        self.assertIn(b"Gross profit", response.data)
+        self.assertIn(b"Period net profit", response.data)
+        self.assertIn(b"2,333.34 remaining", response.data)
+
+    def test_expense_duration_distributes_rounding_cents_and_remaining(self):
+        expense = Expense(
+            title="Three-day booking",
+            category="Equipment",
+            amount=Decimal("10.00"),
+            expense_date=date(2026, 1, 1),
+            duration_days=3,
+        )
+        daily_costs = [
+            expense_amount_between(
+                [expense], date(2026, 1, day), date(2026, 1, day)
+            )
+            for day in range(1, 4)
+        ]
+
+        self.assertEqual(
+            daily_costs,
+            [Decimal("3.33"), Decimal("3.33"), Decimal("3.34")],
+        )
+        self.assertEqual(sum(daily_costs), Decimal("10.00"))
+        self.assertEqual(
+            expense_amount_remaining(expense, date(2026, 1, 2)),
+            Decimal("3.34"),
+        )
+        self.assertEqual(
+            expense_amount_remaining(expense, date(2025, 12, 31)),
+            Decimal("10.00"),
+        )
+
     def test_checkout_rejects_invalid_order_acceptors(self):
         inactive_cashier = User(
             username="inactive.cashier",
@@ -368,6 +523,226 @@ class WebsiteWorkflowTests(unittest.TestCase):
             self.client.post(f"/products/{product.id}/archive").status_code, 302
         )
 
+    def test_product_can_be_hidden_from_sales_and_restored(self):
+        response = self.client.post(
+            f"/products/{self.product_id}/availability"
+        )
+        self.assertEqual(response.status_code, 302)
+        product = db.session.get(Product, self.product_id)
+        self.assertFalse(product.is_available)
+        self.assertIn(b"Test snack", self.client.get("/products/").data)
+        self.assertNotIn(b"Test snack", self.client.get("/pos").data)
+
+        response = self.client.post(
+            f"/products/{self.product_id}/availability"
+        )
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(product)
+        self.assertTrue(product.is_available)
+        self.assertIn(b"Test snack", self.client.get("/pos").data)
+
+    def test_deleting_order_restores_stock_and_removes_order_history(self):
+        response = self.client.post(
+            "/pos",
+            data={
+                "checkout_token": "workflow-delete-order",
+                "cart": json.dumps([{"id": self.product_id, "quantity": 2}]),
+                "payments": json.dumps([{"method": "hand", "amount": "1.00"}]),
+                "discount": "0",
+                "discount_kind": "amount",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        order = db.session.scalar(
+            db.select(Order).where(Order.checkout_token == "workflow-delete-order")
+        )
+        order_id = order.id
+        order_number = order.order_number
+        self.assertEqual(db.session.get(Product, self.product_id).stock, 8)
+
+        response = self.client.post(f"/orders/{order_id}/delete")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(db.session.get(Order, order_id))
+        self.assertEqual(
+            db.session.scalar(
+                db.select(db.func.count(Payment.id)).where(Payment.order_id == order_id)
+            ),
+            0,
+        )
+        self.assertEqual(db.session.get(Product, self.product_id).stock, 10)
+        self.assertEqual(
+            db.session.scalar(
+                db.select(db.func.count(InventoryTransaction.id)).where(
+                    InventoryTransaction.order_id == order_id
+                )
+            ),
+            0,
+        )
+        self.assertEqual(
+            db.session.scalar(
+                db.select(db.func.count(InventoryTransaction.id)).where(
+                    InventoryTransaction.reason.like(f"Order {order_number}:%")
+                )
+            ),
+            1,
+        )
+
+    def test_deleting_product_removes_containing_orders_and_restores_other_stock(self):
+        other_product = Product(
+            name="Other snack",
+            category="Food",
+            selling_price=3,
+            cost_price=1,
+            stock=6,
+            min_stock=2,
+            is_available=True,
+        )
+        ingredient = Ingredient(
+            name="Deletion test extra",
+            unit="piece",
+            stock=5,
+            min_stock=0,
+            unit_cost=0,
+            active=True,
+        )
+        other_product.addons.append(
+            ProductAddon(
+                ingredient=ingredient,
+                quantity_used=1,
+                unit_price=0,
+            )
+        )
+        db.session.add_all([other_product, ingredient])
+        db.session.commit()
+        other_product_id = other_product.id
+        response = self.client.post(
+            "/pos",
+            data={
+                "checkout_token": "workflow-delete-product",
+                "cart": json.dumps(
+                    [
+                        {"id": self.product_id, "quantity": 1},
+                        {
+                            "id": other_product_id,
+                            "quantity": 2,
+                            "addons": [ingredient.id],
+                        },
+                    ]
+                ),
+                "payments": json.dumps([{"method": "hand", "amount": "8.00"}]),
+                "discount": "0",
+                "discount_kind": "amount",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        order = db.session.scalar(
+            db.select(Order).where(Order.checkout_token == "workflow-delete-product")
+        )
+        order_id = order.id
+
+        response = self.client.post(f"/products/{self.product_id}/delete")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(db.session.get(Product, self.product_id))
+        self.assertIsNone(db.session.get(Order, order_id))
+        self.assertEqual(
+            db.session.scalar(
+                db.select(db.func.count(Payment.id)).where(Payment.order_id == order_id)
+            ),
+            0,
+        )
+        self.assertEqual(db.session.get(Product, other_product_id).stock, 6)
+        self.assertEqual(db.session.get(Ingredient, ingredient.id).stock, 5)
+        self.assertEqual(
+            db.session.scalar(
+                db.select(db.func.count(InventoryTransaction.id)).where(
+                    InventoryTransaction.product_id == self.product_id
+                )
+            ),
+            0,
+        )
+
+    def test_delete_foreign_keys_cascade_in_database_schema(self):
+        inspector = inspect(db.engine)
+        expected = {
+            ("order_item", "order_id"): "CASCADE",
+            ("order_item", "product_id"): "SET NULL",
+            ("payment", "order_id"): "CASCADE",
+            ("inventory_transaction", "product_id"): "CASCADE",
+            ("inventory_transaction", "order_id"): "CASCADE",
+            ("ingredient_transaction", "order_id"): "CASCADE",
+            ("product_addon", "product_id"): "CASCADE",
+            ("order_item_addon", "order_item_id"): "CASCADE",
+        }
+        for (table, column), ondelete in expected.items():
+            with self.subTest(table=table, column=column):
+                foreign_key = next(
+                    foreign_key
+                    for foreign_key in inspector.get_foreign_keys(table)
+                    if foreign_key["constrained_columns"] == [column]
+                )
+                self.assertEqual(foreign_key["options"].get("ondelete"), ondelete)
+
+    def test_ingredient_inventory_forms_and_stock_validation(self):
+        response = self.client.post(
+            "/inventory/ingredients",
+            data={
+                "name": "Page style test ingredient",
+                "unit": "g",
+                "stock": "5.000",
+                "min_stock": "1.000",
+                "unit_cost": "0.1250",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        ingredient = db.session.scalar(
+            db.select(Ingredient).where(
+                Ingredient.name == "Page style test ingredient"
+            )
+        )
+        self.assertIsNotNone(ingredient)
+
+        response = self.client.post(
+            f"/inventory/ingredients/{ingredient.id}/details",
+            data={"unit_cost": "0.2500", "min_stock": "2.000"},
+        )
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(ingredient)
+        self.assertEqual(str(ingredient.unit_cost), "0.2500")
+        self.assertEqual(str(ingredient.min_stock), "2.000")
+
+        response = self.client.post(
+            f"/inventory/ingredients/{ingredient.id}/adjust",
+            data={
+                "kind": "Damaged",
+                "quantity_changed": "-1.500",
+                "reason": "Damaged during storage",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(ingredient)
+        self.assertEqual(str(ingredient.stock), "3.500")
+
+        response = self.client.post(
+            f"/inventory/ingredients/{ingredient.id}/adjust",
+            data={
+                "kind": "Damaged",
+                "quantity_changed": "-4.000",
+                "reason": "Damaged during storage",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(ingredient)
+        self.assertEqual(str(ingredient.stock), "3.500")
+
+        page = self.client.get("/inventory/ingredients")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"ingredient-create-form", page.data)
+        self.assertIn(b"ingredient-edit-form", page.data)
+        self.assertIn(b"ingredient-adjust-form", page.data)
+        self.assertIn(b"Damaged during storage", page.data)
+
     def test_sale_payment_refund_and_void(self):
         checkout = {
             "checkout_token": "workflow-checkout-1",
@@ -420,6 +795,28 @@ class WebsiteWorkflowTests(unittest.TestCase):
         )
         db.session.refresh(order)
         self.assertEqual(order.status, "Cancelled")
+
+    def test_product_performance_pdf_includes_completed_sales(self):
+        response = self.client.post(
+            "/pos",
+            data={
+                "checkout_token": "workflow-product-performance-pdf",
+                "cart": json.dumps([{"id": self.product_id, "quantity": 2}]),
+                "payments": "[]",
+                "discount": "0",
+                "discount_kind": "amount",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        report_date = date.today().isoformat()
+        response = self.client.get(
+            f"/reports/products.pdf?start={report_date}&end={report_date}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "application/pdf")
+        self.assertTrue(response.data.startswith(b"%PDF-"))
+        self.assertIn(report_date, response.headers["Content-Disposition"])
+        self.assertGreater(len(response.data), 2000)
 
     def test_product_addons_are_priced_tracked_and_restored(self):
         response = self.client.post(
@@ -586,16 +983,25 @@ class WebsiteWorkflowTests(unittest.TestCase):
             "category": "Miscellaneous",
             "amount": "5.25",
             "expense_date": date.today().isoformat(),
+            "duration_days": "3",
             "description": "Workflow check",
         }
         self.assertEqual(self.client.post("/expenses/new", data=data).status_code, 302)
         expense = db.session.scalar(
             db.select(Expense).where(Expense.title == "Test expense")
         )
-        data.update(title="Updated expense", amount="6.25")
+        self.assertEqual(expense.duration_days, 3)
+        data.update(title="Updated expense", amount="6.25", duration_days="10")
         self.assertEqual(
             self.client.post(f"/expenses/{expense.id}/edit", data=data).status_code, 302
         )
+        db.session.refresh(expense)
+        self.assertEqual(expense.duration_days, 10)
+        expenses_page = self.client.get("/expenses/")
+        self.assertEqual(expenses_page.status_code, 200)
+        self.assertIn(b"Total committed", expenses_page.data)
+        self.assertIn(b"Charged to profit", expenses_page.data)
+        self.assertIn(b"Spread", expenses_page.data)
         self.assertEqual(
             self.client.post(
                 "/settings",
@@ -634,8 +1040,149 @@ class WebsiteWorkflowTests(unittest.TestCase):
             302,
         )
         self.assertEqual(self.client.get("/reports/").status_code, 200)
-        self.assertEqual(self.client.get("/reports/products.csv").mimetype, "text/csv")
+        report_pdf = self.client.get("/reports/products.pdf")
+        self.assertEqual(report_pdf.mimetype, "application/pdf")
+        self.assertTrue(report_pdf.data.startswith(b"%PDF-"))
+        self.assertIn("product-performance-", report_pdf.headers["Content-Disposition"])
+        self.assertGreater(len(report_pdf.data), 2000)
         self.assertEqual(db.session.get(Setting, "stall_name").value, "Workflow Stall")
+
+    def test_expense_entry_supports_one_time_and_spread_allocation(self):
+        response = self.client.get("/expenses/new")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"All at once", response.data)
+        self.assertIn(b"Spread across multiple days", response.data)
+
+        one_time = self.client.post(
+            "/expenses/new",
+            data={
+                "title": "One-time permit",
+                "category": "Miscellaneous",
+                "amount": "40.00",
+                "expense_date": date.today().isoformat(),
+                "allocation_type": "once",
+            },
+        )
+        self.assertEqual(one_time.status_code, 302)
+        expense = db.session.scalar(
+            db.select(Expense).where(Expense.title == "One-time permit")
+        )
+        self.assertEqual(expense.duration_days, 1)
+
+        invalid_spread = self.client.post(
+            "/expenses/new",
+            data={
+                "title": "Invalid spread",
+                "category": "Miscellaneous",
+                "amount": "40.00",
+                "expense_date": date.today().isoformat(),
+                "allocation_type": "spread",
+                "duration_days": "1",
+            },
+        )
+        self.assertEqual(invalid_spread.status_code, 200)
+        self.assertIsNone(
+            db.session.scalar(
+                db.select(Expense).where(Expense.title == "Invalid spread")
+            )
+        )
+
+    def test_expense_delete_is_audited_and_removes_receipt(self):
+        root_id = db.session.scalar(
+            db.select(User.id).where(User.username == "root")
+        )
+        expense = Expense(
+            title="Expense to delete",
+            category="Packaging",
+            amount="12.50",
+            description="Remove after checking receipt",
+            expense_date=date.today(),
+            created_by_id=root_id,
+            receipt_filename="receipts/test-expense-delete.jpg",
+        )
+        db.session.add(expense)
+        db.session.commit()
+        expense_id = expense.id
+        receipt_path = (
+            Path(self.app.instance_path)
+            / "uploads"
+            / "receipts"
+            / "test-expense-delete.jpg"
+        )
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_bytes(b"test receipt")
+
+        response = self.client.post(f"/expenses/{expense_id}/delete")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(db.session.get(Expense, expense_id))
+        self.assertFalse(receipt_path.exists())
+        audit_event = db.session.scalar(
+            db.select(AuditLog).where(
+                AuditLog.action == "Deleted expense",
+                AuditLog.entity_id == str(expense_id),
+            )
+        )
+        self.assertIsNotNone(audit_event)
+        self.assertIn("Expense to delete", audit_event.details)
+
+    def test_expense_delete_requires_manager_role(self):
+        root_id = db.session.scalar(
+            db.select(User.id).where(User.username == "root")
+        )
+        expense = Expense(
+            title="Protected expense",
+            category="Packaging",
+            amount="12.50",
+            expense_date=date.today(),
+            created_by_id=root_id,
+        )
+        db.session.add(expense)
+        db.session.commit()
+        expense_id = expense.id
+
+        self.client.post("/auth/logout")
+        self.login("cashier", "cashier-password-123")
+        response = self.client.post(f"/expenses/{expense_id}/delete")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIsNotNone(db.session.get(Expense, expense_id))
+
+    def test_report_separates_lifetime_and_period_expenses(self):
+        root_id = db.session.scalar(
+            db.select(User.id).where(User.username == "root")
+        )
+        db.session.add_all(
+            [
+                Expense(
+                    title="Historical equipment",
+                    category="Equipment",
+                    amount="1000.00",
+                    expense_date=date(2000, 1, 1),
+                    created_by_id=root_id,
+                ),
+                Expense(
+                    title="Current packaging",
+                    category="Packaging",
+                    amount="25.00",
+                    expense_date=date.today(),
+                    created_by_id=root_id,
+                ),
+            ]
+        )
+        db.session.commit()
+
+        response = self.client.get(
+            f"/reports/?start={date.today().isoformat()}&end={date.today().isoformat()}"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"All-time expenses", response.data)
+        self.assertIn(b"1,025.00", response.data)
+        self.assertIn(b"1,000.00", response.data)
+        self.assertIn(b"Expense cost recognized", response.data)
+        self.assertIn(b"25.00", response.data)
+        self.assertIn(b"-25.00", response.data)
 
     def test_cashier_permissions_and_private_receipts(self):
         self.client.post("/auth/logout")
