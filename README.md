@@ -2,6 +2,8 @@
 
 A private Flask management app for a university festival food stall. It includes team sign-in, products, point of sale, order and payment records, inventory movements, expenses, reports, and a responsive dashboard.
 
+Food category illustrations are locally served Twemoji SVGs, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Artwork source: [Twemoji](https://github.com/twitter/twemoji).
+
 ## Start locally
 
 Use Python 3.11 or newer. In PowerShell:
@@ -52,7 +54,7 @@ python -m unittest discover -s tests -v
 
 ## Payments and sales
 
-The only payment methods are **By hand (cash)** and **bKash**. Payments are entered by the team; the app does not connect to bKash or initiate a transaction. Split payments are supported. Root and managers can apply a fixed-amount or percentage discount at checkout; the server validates the discount, recomputes totals, and allocates discounts in reports. Checkout checks stock, stores product price and cost snapshots, records inventory movement, and saves the order and payments in one database transaction.
+The only payment methods are **By hand (cash)** and **bKash**. Payments are entered by the team; the app does not connect to bKash or initiate a transaction. Split payments are supported. Selecting bKash in the POS shows the public SVG QR code from `project/static/qr_code.svg`, bKash brand mark, and payment number. The brand mark is served locally from `project/static/bkash-mark.svg` (source: `https://raw.githubusercontent.com/HckrXyzz/image/main/bkash.svg`), so it does not depend on a third-party host at runtime. Root and managers can apply a fixed-amount or percentage discount at checkout; staff can also apply a coupon code. Coupon discounts stack with staff discounts, and each code can be redeemed once. Root and managers can review codes on **Coupons** and reset redeemed codes for reuse. The `coupon` table is created by the latest migration. Checkout validates coupons and totals again before consuming a code, and saves the order, payments, stock changes, and coupon redemption in one database transaction.
 
 Root and managers can permanently delete orders; completed orders return their product and ingredient stock. Permanently deleting a product also deletes every order containing it, including mixed-product orders and their payments, and restores stock for the remaining items. Use **Hide from sales** to temporarily remove a product from the POS while keeping its product record and sales history.
 

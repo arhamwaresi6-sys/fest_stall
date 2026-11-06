@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% from "macros/icons.html" import icon %}{% block title %}Coupons{% endblock %}{% block page_title %}Coupons{% endblock %}{% block content %}
+<div class="page-heading"><div><p class="eyebrow">PROMOTIONS</p><h1>Coupon codes</h1><p class="muted">Manage issued discounts and make a redeemed code available again.</p></div><a class="text-link" href="{{ url_for('sales.pos') }}">Back to checkout →</a></div>
+<section class="panel coupon-management" aria-label="Coupon code list">
+  <div class="coupon-management-heading"><div><h2>Issued codes</h2><p class="muted">{{ coupons|length }} total coupon{% if coupons|length != 1 %}s{% endif %}</p></div></div>
+  {% if coupons %}
+  <div class="table-scroll"><table class="data-table coupon-table"><thead><tr><th>Code</th><th>Discount</th><th>Status</th><th>Used on order</th><th>Action</th></tr></thead><tbody>
+  {% for coupon in coupons %}<tr><td data-label="Code"><code class="coupon-code">{{ coupon.code }}</code></td><td data-label="Discount">{% if coupon.discount_type == 'percent' %}{{ coupon.discount_value|int }}%{% else %}{{ coupon.discount_value|money }}{% endif %}</td><td data-label="Status"><span class="coupon-state {% if not coupon.is_active %}coupon-state-disabled{% elif coupon.redeemed_at %}coupon-state-used{% else %}coupon-state-ready{% endif %}">{% if not coupon.is_active %}Inactive{% elif coupon.redeemed_at %}Redeemed{% else %}Available{% endif %}</span></td><td data-label="Used on order">{% if coupon.redeemed_order_id %}#{{ coupon.redeemed_order_id }}{% elif coupon.redeemed_at %}Order removed{% else %}—{% endif %}</td><td data-label="Action">{% if coupon.redeemed_at %}<form method="post" action="{{ url_for('sales.reset_coupon', coupon_id=coupon.id) }}" onsubmit="return confirm('Make {{ coupon.code }} available again?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-light btn-small coupon-reset-button" type="submit">{{ icon('refresh') }} Reset code</button></form>{% else %}<span class="muted">—</span>{% endif %}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="coupon-management-empty"><span class="coupon-empty-icon">{{ icon('receipt') }}</span><h3>No coupons yet</h3><p class="muted">Coupon codes added to the coupon table will appear here.</p></div>{% endif %}
+</section>
+{% endblock %}

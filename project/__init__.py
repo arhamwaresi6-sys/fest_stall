@@ -80,6 +80,11 @@ def create_app(config_object=Config):
         except Exception:
             return str(value)
 
+    @app.template_filter("food_icon")
+    def food_icon(category):
+        from .food_icons import food_icon_filename
+        return food_icon_filename(category)
+
     @app.context_processor
     def inject_shell_values():
         return {"now": datetime.now(ZoneInfo("Asia/Dhaka")), "active_user": current_user}

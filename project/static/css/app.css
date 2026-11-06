@@ -269,3 +269,330 @@ html{min-height:100%;-webkit-text-size-adjust:100%;text-size-adjust:100%}body{mi
   .expense-deduction-panel .chart-heading>.text-link{align-self:flex-end}
 }
 @media(prefers-reduced-motion:reduce){.profit-formula-panel{animation:none}}
+
+.coupon-panel{margin:18px 0;padding:16px;border:1px solid #e8e3dc;border-radius:16px;background:#fff}
+.coupon-heading{display:flex;align-items:center;gap:11px}
+.coupon-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:#fff0f5;color:#c02662;font-size:20px;font-weight:800}
+.coupon-heading>div{display:grid;gap:3px}
+.coupon-heading small,.coupon-status{color:#626e7d;font-size:12px;line-height:1.5}
+.coupon-controls{display:flex;align-items:center;gap:9px;margin-top:13px}
+.coupon-controls input{min-width:0;min-height:44px;flex:1;font-size:13px}
+.coupon-controls .btn{min-height:44px;padding:0 16px}
+.coupon-controls [hidden],.coupon-total-line[hidden],.bkash-payment-details[hidden]{display:none}
+.coupon-status{min-height:17px;margin:8px 0 0}
+.coupon-total-line{color:#bd245d}
+.coupon-total-line b{color:#bd245d}
+.pos-layout{grid-template-columns:minmax(0,1fr) minmax(460px,520px);gap:24px}
+.cart-panel{padding:20px;border-color:#e5dfd6;border-radius:20px;box-shadow:0 12px 32px #17283b12;max-height:calc(100vh - 104px);max-height:calc(100dvh - 104px)}
+.cart-header{padding-bottom:15px}
+.cart-header h2{font-size:21px;letter-spacing:-.4px}
+.cart-header .eyebrow{font-size:10px}
+.cart-count{font:700 12px 'Inter';padding:5px 9px}
+.cart-empty{padding:34px 12px;color:#536174;font-size:13px;line-height:1.7}
+.cart-empty .empty-icon{display:grid;place-items:center;width:50px;height:50px;margin:0 auto 12px;border-radius:16px;background:#f8f2eb;color:#7a5261}
+.cart-empty .empty-icon .icon{width:25px;height:25px}
+.cart-empty p{margin:0}
+.cart-items{max-height:300px;overflow-x:hidden}
+.cart-line{grid-template-columns:minmax(0,1fr) auto auto 30px;gap:10px;padding:14px 0;border-bottom-color:#ece8e2}
+.cart-line-info b{font:700 13px/1.35 Manrope;color:#1b2c40;white-space:normal}
+.cart-line-info small{color:#5d6877;font-size:11px;line-height:1.45}
+.cart-addons{color:#5d6877;font-size:11px}
+.qty-control{gap:4px;border-color:#e4ded5;border-radius:10px;padding:3px}
+.qty-control button{display:grid;place-items:center;width:30px;height:30px;padding:0;border-radius:7px;font-size:18px}
+.qty-control button:hover{background:#fff0e7}
+.qty-control span{min-width:20px;font-size:12px}
+.cart-line-total{font:700 12px Manrope;white-space:nowrap}
+.remove-cart,.remove-payment{display:grid;place-items:center;width:32px;height:32px;border-radius:9px;color:#697586}
+.remove-cart:hover,.remove-payment:hover{background:#fff0ed;color:#a9232b}
+.cart-fields{gap:12px;padding:16px 0}
+.cart-fields label{font-size:12px}
+.cart-fields input,.cart-fields select{min-height:44px;font-size:13px}
+.totals{gap:12px;padding:16px 0}
+.totals>div,.total-line{font-size:13px}
+.totals small{color:#657181;font-size:11px}
+.total-line strong{font-size:21px}
+.payments-heading{font-size:13px;margin:4px 0 10px}
+.payment-input-row{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(84px,.72fr) minmax(105px,.9fr) 34px;align-items:center;gap:7px;margin:9px 0}
+.payment-method-picker{position:relative;display:flex;align-items:center;min-width:0}
+.payment-method-picker .payment-method-value{display:none}
+.payment-input-row input{min-height:44px;min-width:0;padding:9px 10px;font-size:12px}
+.payment-method-icon{position:absolute;z-index:1;left:10px;display:grid;place-items:center;width:23px;height:23px;pointer-events:none}
+.payment-method-icon .icon,.payment-method-icon img{width:23px;height:23px}
+.bkash-payment-details{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) 172px;align-items:center;gap:16px;margin-top:5px;padding:18px;border:1px solid #f0bdd3;border-radius:18px;background:linear-gradient(145deg,#fff5f9 0%,#fff 70%);color:#401d30;box-shadow:0 6px 18px #e2136e12}
+.bkash-payment-copy{display:grid;justify-items:start;gap:7px;min-width:0}
+.bkash-brand{display:flex;align-items:center;gap:8px;color:#b60e59;font-size:16px;font-weight:800;letter-spacing:-.2px}
+.bkash-brand img{width:28px;height:28px;border-radius:8px}
+.bkash-payment-copy>b{font-size:14px}
+.bkash-payment-copy p{margin:0;color:#624e5a;font-size:12px;line-height:1.55}
+.bkash-number-label{margin-top:5px;color:#665865;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.bkash-payment-copy strong{font:800 21px/1.15 Manrope;letter-spacing:.025em;color:#331526}
+.bkash-payment-copy small{color:#675663;font-size:11px;line-height:1.45}
+.bkash-qr-frame{display:grid;justify-items:center;gap:8px;padding:10px;border:1px solid #f0d7e2;border-radius:15px;background:#fff}
+.bkash-qr-frame span{color:#624e5a;font-size:10px;font-weight:700}
+.bkash-qr{display:block;width:100%;max-width:150px;aspect-ratio:1;object-fit:contain;image-rendering:pixelated}
+.payment-balance{padding:11px 12px;border-radius:11px;background:#f6f7f8;color:#354458;font-size:12px;font-weight:700}
+.checkout-btn{min-height:48px;font-size:14px}
+.checkout-note{color:#5d6877;font-size:11px;line-height:1.55}
+@media(max-width:1100px){
+  .pos-layout{grid-template-columns:minmax(0,1fr) minmax(400px,440px);gap:18px}
+  .cart-panel{padding:16px}
+  .payment-input-row{grid-template-columns:minmax(0,1fr) minmax(75px,.75fr) 32px}
+  .payment-input-row .payment-reference{grid-column:1/3}
+  .payment-input-row .remove-payment{grid-column:3;grid-row:1/3}
+  .bkash-payment-details{grid-template-columns:minmax(0,1fr) 145px;padding:14px}
+}
+@media(max-width:900px){
+  .pos-layout{grid-template-columns:minmax(0,1fr)}
+  .cart-panel{position:static;max-height:none;overflow:visible}
+  .cart-items{max-height:360px}
+}
+@media(max-width:520px){
+  .coupon-panel{padding:13px}
+  .coupon-controls{flex-wrap:wrap}
+  .coupon-controls input{flex-basis:100%}
+  .coupon-controls .btn{flex:1}
+  .cart-panel{padding:15px;border-radius:17px;box-shadow:0 8px 22px #17283b10}
+  .cart-line{grid-template-columns:minmax(0,1fr) auto 44px;gap:8px}
+  .cart-line-total{grid-column:1}
+  .remove-cart{grid-column:3;grid-row:1/3}
+  .payment-input-row{grid-template-columns:minmax(0,1fr) minmax(82px,.7fr) 44px}
+  .payment-input-row .payment-reference{grid-column:1/3}
+  .bkash-payment-details{grid-template-columns:minmax(0,1fr);gap:12px;padding:14px}
+  .bkash-qr-frame{width:100%;padding:10px}
+  .bkash-qr{max-width:240px}
+  .bkash-payment-copy strong{font-size:19px}
+}
+@media(max-width:380px){
+  .payment-input-row{grid-template-columns:minmax(0,1fr) minmax(72px,.65fr) 44px}
+  .bkash-payment-details{gap:10px;padding:12px}
+  .bkash-qr{max-width:210px}
+  .bkash-payment-copy p{font-size:11px}
+  .bkash-payment-copy strong{font-size:17px}
+}
+@media(max-width:320px){html{min-width:0}}
+.coupon-management{overflow:hidden;border-color:#e5dfd6;border-radius:16px;box-shadow:0 10px 28px #17283b0d}
+.coupon-management-heading{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--line)}
+.coupon-management-heading h2{margin:0 0 4px;font:700 18px Manrope}
+.coupon-management-heading .muted{font-size:12px}
+.coupon-table{width:100%;border-collapse:collapse;text-align:left}
+.coupon-table th,.coupon-table td{padding:13px 16px;border-bottom:1px solid #eeeae4;vertical-align:middle}
+.coupon-table th{background:#faf9f7;color:#5d6877;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.coupon-table td{color:#26364a;font-size:12px}
+.coupon-code{padding:5px 8px;border:1px solid #eee7df;border-radius:7px;background:#faf9f7;color:#24354a;font:700 12px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.03em}
+.coupon-state{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:20px;font-size:10px;font-weight:800}
+.coupon-state:before{width:6px;height:6px;border-radius:50%;background:currentColor;content:""}
+.coupon-state-ready{background:#e9f5ed;color:#217354}
+.coupon-state-used{background:#fff3dc;color:#896516}
+.coupon-state-disabled{background:#f0f1f3;color:#697586}
+.coupon-reset-button{min-height:34px;padding:7px 10px;font-size:10px}
+.coupon-reset-button .icon{width:14px;height:14px}
+.coupon-management-empty{display:grid;justify-items:center;gap:8px;padding:46px 18px;text-align:center}
+.coupon-empty-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:15px;background:#fff0f5;color:#b60e59}
+.coupon-empty-icon .icon{width:23px;height:23px}
+.coupon-management-empty h3{margin:2px 0 0;font:700 16px Manrope}
+.coupon-management-empty p{margin:0}
+@media(max-width:700px){
+  .coupon-table thead{display:none}
+  .coupon-table,.coupon-table tbody,.coupon-table tr,.coupon-table td{display:block;width:100%}
+  .coupon-table tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px 14px;padding:15px;border-bottom:1px solid #eeeae4}
+  .coupon-table td{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0;border:0;text-align:right}
+  .coupon-table td:before{flex:0 0 auto;color:#657181;font-size:10px;font-weight:700;content:attr(data-label)}
+  .coupon-table td:first-child{grid-column:1/-1;justify-content:flex-start}
+  .coupon-table td:first-child:before{content:none}
+  .coupon-table td:last-child{grid-column:1/-1;justify-content:flex-end;margin-top:3px}
+}
+.payment-method-icon img,.payment-method-icon .icon{transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+.payment-row-bkash .payment-method-icon img{animation:payment-icon-arrive .3s cubic-bezier(.2,.8,.2,1)}
+.bkash-payment-details:not([hidden]){animation:bkash-details-arrive .28s cubic-bezier(.2,.8,.2,1) both}
+.bkash-qr-zoom{position:relative;display:grid;place-items:center;width:100%;padding:0;border:0;border-radius:10px;background:transparent;cursor:zoom-in}
+.bkash-qr-zoom:focus-visible{outline:3px solid #e2136e;outline-offset:3px}
+.bkash-qr-expand-hint{position:absolute;inset:auto 5px 5px;padding:5px 7px;border-radius:7px;background:#17283bd9;color:#fff;font-size:10px;font-weight:700;opacity:0;transform:translateY(4px);transition:opacity .18s,transform .18s}
+.bkash-qr-zoom:hover .bkash-qr-expand-hint,.bkash-qr-zoom:focus-visible .bkash-qr-expand-hint{opacity:1;transform:translateY(0)}
+.bkash-qr-dialog{width:min(540px,calc(100vw - 32px));max-width:none;max-height:calc(100dvh - 32px);overflow:auto;padding:22px;border:1px solid #f0bdd3;border-radius:24px;background:linear-gradient(145deg,#fff5f9,#fff 55%);color:#331526;box-shadow:0 24px 80px #17283b40}
+.bkash-qr-dialog[open]{animation:qr-dialog-arrive .22s cubic-bezier(.2,.8,.2,1) both}
+.bkash-qr-dialog::backdrop{background:#101927a8;backdrop-filter:blur(4px);animation:qr-backdrop-arrive .2s ease-out both}
+.bkash-qr-dialog-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.bkash-qr-dialog-header .eyebrow{margin-bottom:5px;color:#b60e59}
+.bkash-qr-dialog-header h2{margin:0;font:800 21px/1.2 Manrope}
+.bkash-qr-dialog-close{display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;border:1px solid #efd6e1;border-radius:13px;background:#fff;color:#5a3549;font-size:25px;line-height:1;transition:background .16s,transform .16s}
+.bkash-qr-dialog-close:hover{transform:rotate(5deg);background:#fff0f5}
+.bkash-qr-dialog-description{margin:12px 0 16px;color:#5c4a56;font-size:13px;line-height:1.55}
+.bkash-qr-dialog-description strong{color:#331526;white-space:nowrap}
+.bkash-qr-expanded{display:block;width:min(100%,440px);max-height:min(62dvh,440px);aspect-ratio:1;margin:0 auto;object-fit:contain;image-rendering:pixelated;border:1px solid #f0d7e2;border-radius:18px;background:#fff;box-shadow:0 8px 26px #e2136e12}
+.bkash-qr-dialog-hint{display:block;margin-top:12px;color:#624e5a;font-size:11px;font-weight:600;text-align:center}
+@keyframes bkash-details-arrive{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes payment-icon-arrive{from{opacity:.55;transform:scale(.75) rotate(-10deg)}to{opacity:1;transform:scale(1) rotate(0)}}
+@keyframes qr-dialog-arrive{from{opacity:0;transform:translateY(10px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes qr-backdrop-arrive{from{opacity:0}to{opacity:1}}
+@media(max-width:520px){
+  .bkash-qr-dialog{padding:17px;border-radius:20px}
+  .bkash-qr-dialog-header h2{font-size:19px}
+  .bkash-qr-expanded{width:min(100%,380px);max-height:62dvh}
+}
+@media(prefers-reduced-motion:reduce){
+  .payment-method-trigger,.payment-method-chevron,.payment-method-option,.payment-method-icon img,.payment-method-icon .icon,.bkash-qr-expand-hint,.bkash-qr-dialog-close{transition:none}
+  .payment-method-options:not([hidden]),.payment-row-bkash .payment-method-icon img,.bkash-payment-details:not([hidden]),.bkash-qr-dialog[open],.bkash-qr-dialog::backdrop{animation:none}
+}
+select:not([multiple]):not([size]){
+  appearance:none;
+  padding-right:40px;
+  background-color:#fff;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23616b7a' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.7'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 12px center;
+  cursor:pointer;
+  transition:border-color .18s,box-shadow .18s,background-color .18s,transform .18s
+}
+select:not([multiple]):not([size]):hover:not(:disabled){border-color:#c8b7c7;background-color:#fffafd}
+select:not([multiple]):not([size]):focus-visible{border-color:var(--red);animation:select-focus-arrive .22s ease-out}
+select:disabled{cursor:not-allowed;opacity:.65}
+select option{background:#fff;color:var(--ink)}
+select option:checked{background:#fce8dc;color:var(--red-dark)}
+@keyframes select-focus-arrive{from{transform:translateY(2px)}to{transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){
+  select:not([multiple]):not([size]){transition:none}
+  select:not([multiple]):not([size]):focus-visible{animation:none}
+}
+.payment-method-picker.is-open{z-index:4}
+.payment-method-trigger{
+  position:relative;display:flex;align-items:center;width:100%;min-width:0;min-height:44px;padding:9px 34px 9px 40px;
+  overflow:hidden;border:1.5px solid #ded9e3;border-radius:10px;background:#fff;color:var(--ink);text-align:left;
+  font-size:12px;font-weight:700;cursor:pointer;transition:border-color .18s,box-shadow .18s,background-color .18s,transform .18s
+}
+.payment-method-trigger:hover{border-color:#c8b7c7;background:#fffafd}
+.payment-method-trigger:focus-visible{outline:none;border-color:#d61568;box-shadow:0 0 0 3px #e2136e20}
+.payment-method-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.payment-method-chevron{position:absolute;right:11px;width:15px;height:15px;fill:none;stroke:#616b7a;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s cubic-bezier(.2,.8,.2,1)}
+.payment-method-picker.is-open .payment-method-chevron{transform:rotate(180deg)}
+.payment-method-options{
+  position:absolute;top:calc(100% + 7px);left:0;right:0;z-index:8;display:grid;gap:4px;padding:5px;
+  border:1px solid #eadfe7;border-radius:13px;background:#fff;box-shadow:0 12px 28px #17283b20;
+  transform-origin:top center
+}
+.payment-method-options[hidden]{display:none}
+.payment-method-options:not([hidden]){animation:payment-options-arrive .18s cubic-bezier(.2,.8,.2,1) both}
+.payment-method-option{
+  display:flex;align-items:center;width:100%;min-height:40px;padding:9px 11px;border:0;border-radius:9px;
+  background:transparent;color:var(--ink);text-align:left;font-size:12px;font-weight:650;cursor:pointer;
+  transition:background-color .15s,color .15s,transform .15s
+}
+.payment-method-option:hover,.payment-method-option:focus-visible{outline:none;background:#fff2f7;color:#9e174f}
+.payment-method-option:focus-visible{box-shadow:inset 0 0 0 2px #e2136e55}
+.payment-method-option.is-selected{background:#fbedf3;color:#a71454;font-weight:800}
+@keyframes payment-options-arrive{from{opacity:0;transform:translateY(-5px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){
+  .payment-method-trigger,.payment-method-chevron,.payment-method-option{transition:none}
+  .payment-method-options:not([hidden]){animation:none}
+}
+.custom-select{position:relative;display:block;width:100%;min-width:0}
+.custom-select.is-open{z-index:20}
+.custom-select-native{
+  position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;
+  overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important
+}
+.custom-select-trigger{
+  position:relative;display:flex;align-items:center;width:100%;min-width:0;min-height:44px;padding:10px 38px 10px 12px;
+  overflow:hidden;border:1.5px solid #ddd7cd;border-radius:10px;background:#fff;color:var(--ink);text-align:left;
+  font-size:12px;font-weight:650;cursor:pointer;transition:border-color .18s,box-shadow .18s,background-color .18s,transform .18s
+}
+.custom-select-trigger:after{
+  position:absolute;right:13px;width:9px;height:9px;border-right:1.7px solid #657181;border-bottom:1.7px solid #657181;
+  content:"";transform:translateY(-2px) rotate(45deg);transition:transform .18s cubic-bezier(.2,.8,.2,1)
+}
+.custom-select-trigger:hover{border-color:#c8b7c7;background:#fffafd}
+.custom-select-trigger:focus-visible{outline:none;border-color:var(--red);box-shadow:0 0 0 3px #c9363619}
+.custom-select-trigger[aria-invalid=true]{border-color:#bf3434;box-shadow:0 0 0 3px #bf343422}
+.custom-select.is-open .custom-select-trigger{border-color:var(--red);background:#fffafd}
+.custom-select.is-open .custom-select-trigger:after{transform:translateY(3px) rotate(225deg)}
+.custom-select-menu{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:21;display:grid;gap:3px;max-height:240px;padding:5px;
+  overflow:auto;border:1px solid #e6e1d9;border-radius:12px;background:#fff;box-shadow:0 12px 28px #17283b20;
+  transform-origin:top center
+}
+.custom-select-menu[hidden]{display:none}
+.custom-select.opens-up .custom-select-menu{top:auto;bottom:calc(100% + 6px);transform-origin:bottom center}
+.custom-select.is-open .custom-select-menu{animation:custom-select-arrive .18s cubic-bezier(.2,.8,.2,1) both}
+.custom-select-option{
+  display:flex;align-items:center;width:100%;min-height:38px;padding:8px 10px;border:0;border-radius:8px;background:transparent;
+  color:var(--ink);text-align:left;font-size:12px;font-weight:600;cursor:pointer;transition:background-color .14s,color .14s,transform .14s
+}
+.custom-select-option:hover,.custom-select-option:focus-visible{outline:none;background:#fff0e7;color:var(--red-dark)}
+.custom-select-option:focus-visible{box-shadow:inset 0 0 0 2px #c9363633}
+.custom-select-option.is-selected{background:#fff0e7;color:var(--red-dark);font-weight:800}
+.custom-select-option:disabled{opacity:.5;cursor:not-allowed}
+.custom-select-error{display:block;margin-top:5px;color:#a9232b;font-size:11px;font-weight:600}
+.custom-select-error[hidden]{display:none}
+.input-suggestions{position:relative;width:100%;min-width:0}
+.input-suggestions.is-open{z-index:20}
+.input-suggestions-menu{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:21;display:grid;gap:3px;max-height:240px;padding:5px;
+  overflow:auto;border:1px solid #e6e1d9;border-radius:12px;background:#fff;box-shadow:0 12px 28px #17283b20;
+  transform-origin:top center
+}
+.input-suggestions-menu[hidden]{display:none}
+.input-suggestions.opens-up .input-suggestions-menu{top:auto;bottom:calc(100% + 6px);transform-origin:bottom center}
+.input-suggestions.is-open .input-suggestions-menu{animation:custom-select-arrive .18s cubic-bezier(.2,.8,.2,1) both}
+.input-suggestion-option{
+  display:flex;align-items:center;width:100%;min-height:38px;padding:8px 10px;border:0;border-radius:8px;background:transparent;
+  color:var(--ink);text-align:left;font-size:12px;font-weight:600;cursor:pointer;transition:background-color .14s,color .14s
+}
+.input-suggestion-option:hover,.input-suggestion-option:focus-visible{outline:none;background:#fff0e7;color:var(--red-dark)}
+.input-suggestion-option:focus-visible{box-shadow:inset 0 0 0 2px #c9363633}
+.input-suggestion-option[aria-selected=true]{background:#fff0e7;color:var(--red-dark);font-weight:800}
+.discount-controls .custom-select{width:45px;flex:0 0 45px}
+.discount-controls .custom-select-trigger{min-height:35px;padding:5px 20px 5px 7px;font-size:11px}
+.discount-controls .custom-select-trigger:after{right:7px;width:7px;height:7px}
+.filter-bar .custom-select{min-width:150px}
+.filter-bar .custom-select-trigger{min-height:41px;padding:9px 36px 9px 11px;font-size:12px}
+.cart-fields .custom-select-trigger{min-height:44px;font-size:13px}
+.cart-fields .custom-select-error{font-size:10px}
+@keyframes custom-select-arrive{from{opacity:0;transform:translateY(-5px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not(:disabled):hover,textarea:not(:disabled):hover{border-color:#c8b7c7}
+input:not([type=hidden]):not([type=checkbox]):not([type=radio]):focus-visible,textarea:focus-visible{animation:form-field-focus .18s ease-out}
+input:disabled,textarea:disabled{background:#f4f3f1;color:#78818d;cursor:not-allowed}
+.food-icon{display:block;width:48px;height:48px;padding:4px;object-fit:contain;border:1.5px solid var(--ink);border-radius:14px;background:#fff4e4}
+.food-icon.food-large{width:54px;height:54px}
+.pos-product .food-icon{width:43px;height:43px;padding:3px}
+.pos-menu .empty-state .food-icon{margin:0 auto 12px}
+.pos-menu .empty-state{grid-column:1/-1}
+@keyframes form-field-focus{from{transform:translateY(2px)}to{transform:translateY(0)}}
+@media(max-width:1300px) and (min-width:1101px){
+  .pos-layout{grid-template-columns:minmax(0,1fr) minmax(420px,470px);gap:20px}
+}
+@media(max-width:1000px){
+  .pos-layout{grid-template-columns:minmax(0,1fr)}
+  .cart-panel{position:static;max-height:none;overflow:visible}
+  .cart-items{max-height:360px}
+}
+@media(prefers-reduced-motion:reduce){
+  .custom-select-trigger,.custom-select-option,.input-suggestion-option{transition:none}
+  .custom-select.is-open .custom-select-menu,.input-suggestions.is-open .input-suggestions-menu,input:focus-visible,textarea:focus-visible{animation:none}
+}
+input[type=file]{
+  width:100%;min-width:0;min-height:48px;padding:6px;border:1.5px dashed #d8cfc4;border-radius:12px;
+  background:linear-gradient(135deg,#fffdfa,#fff7f0);color:#586577;font-size:12px;font-weight:600;
+  cursor:pointer;transition:border-color .18s,background-color .18s,box-shadow .18s,transform .18s
+}
+input[type=file]::file-selector-button{
+  min-height:34px;margin:0 12px 0 0;padding:7px 13px;border:1px solid #17283b;border-radius:9px;
+  background:#fff;color:#17283b;font:800 11px 'Inter',sans-serif;cursor:pointer;
+  transition:background-color .16s,color .16s,transform .16s,box-shadow .16s
+}
+input[type=file]::-webkit-file-upload-button{
+  min-height:34px;margin:0 12px 0 0;padding:7px 13px;border:1px solid #17283b;border-radius:9px;
+  background:#fff;color:#17283b;font:800 11px 'Inter',sans-serif;cursor:pointer;
+  transition:background-color .16s,color .16s,transform .16s,box-shadow .16s
+}
+input[type=file]:hover:not(:disabled){border-color:#c93636;background:#fff8f5}
+input[type=file]:hover:not(:disabled)::file-selector-button{background:#fff0e7;color:#a9232b;transform:translateY(-1px)}
+input[type=file]:hover:not(:disabled)::-webkit-file-upload-button{background:#fff0e7;color:#a9232b;transform:translateY(-1px)}
+input[type=file]:focus-visible{outline:3px solid #c9363630;outline-offset:2px;border-color:#c93636}
+input[type=file]:active:not(:disabled)::file-selector-button{transform:translateY(0) scale(.98)}
+input[type=file]:active:not(:disabled)::-webkit-file-upload-button{transform:translateY(0) scale(.98)}
+input[type=file]:disabled{opacity:.6;cursor:not-allowed;background:#f4f3f1}
+input[type=file]:disabled::file-selector-button{cursor:not-allowed;background:#f1efec;color:#78818d;border-color:#d7d2ca}
+input[type=file]:disabled::-webkit-file-upload-button{cursor:not-allowed;background:#f1efec;color:#78818d;border-color:#d7d2ca}
+@media(prefers-reduced-motion:reduce){
+  input[type=file],input[type=file]::file-selector-button,input[type=file]::-webkit-file-upload-button{transition:none}
+  input[type=file]:hover:not(:disabled)::file-selector-button,input[type=file]:hover:not(:disabled)::-webkit-file-upload-button{transform:none}
+}

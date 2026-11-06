@@ -7,5 +7,6 @@ from .expense import Expense
 from .audit import AuditLog
 from .setting import Setting
 from .ingredient import Ingredient, IngredientTransaction, ProductAddon, OrderItemAddon
+from .coupon import Coupon
 
-__all__ = ["User", "Product", "Order", "OrderItem", "Payment", "InventoryTransaction", "Expense", "AuditLog", "Setting", "Ingredient", "IngredientTransaction", "ProductAddon", "OrderItemAddon"]
+__all__ = ["User", "Product", "Order", "OrderItem", "Payment", "InventoryTransaction", "Expense", "AuditLog", "Setting", "Ingredient", "IngredientTransaction", "ProductAddon", "OrderItemAddon", "Coupon"]

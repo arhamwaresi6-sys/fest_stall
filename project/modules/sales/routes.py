@@ -4,17 +4,19 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from ...extensions import db
+from ...food_icons import POS_CATEGORY_LABELS, category_group
 from ...models import (
     Ingredient,
     IngredientTransaction,
     InventoryTransaction,
+    Coupon,
     Order,
     OrderItem,
     OrderItemAddon,
@@ -206,7 +208,29 @@ def pos():
                 raise ValueError("Choose a valid discount type.")
             if discount > subtotal:
                 raise ValueError("Discount cannot exceed the subtotal.")
-            total = subtotal - discount
+            coupon_code = request.form.get("coupon_code", "").strip().upper()
+            coupon = None
+            coupon_discount = Decimal("0.00")
+            if coupon_code:
+                coupon = db.session.scalar(
+                    select(Coupon)
+                    .where(
+                        Coupon.code == coupon_code,
+                        Coupon.is_active.is_(True),
+                        Coupon.redeemed_at.is_(None),
+                    )
+                    .with_for_update()
+                )
+                if coupon is None:
+                    raise ValueError("That coupon is invalid or has already been used.")
+                if coupon.discount_type == "percent":
+                    coupon_discount = (
+                        subtotal * coupon.discount_value / Decimal("100")
+                    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                else:
+                    coupon_discount = coupon.discount_value
+                coupon_discount = min(coupon_discount, subtotal - discount)
+            total = subtotal - discount - coupon_discount
             valid_payments = []
             for payment in payment_rows:
                 if not isinstance(payment, dict):
@@ -221,12 +245,15 @@ def pos():
 
             order = Order(order_number=f"FS-{datetime.now(timezone.utc):%y%m%d}-{uuid4().hex[:6].upper()}",
                           checkout_token=checkout_token,
-                          subtotal=subtotal, discount=discount, total=total,
+                          subtotal=subtotal, discount=discount + coupon_discount, total=total,
                           notes=request.form.get("notes", "").strip()[:2000] or None,
                           created_by_id=current_user.id,
                           accepted_by_id=accepted_by.id)
             db.session.add(order)
             db.session.flush()
+            if coupon is not None:
+                coupon.redeemed_at = datetime.now(timezone.utc)
+                coupon.redeemed_order_id = order.id
             for line, addons in zip(lines, line_addons):
                 product = by_id[line["product_id"]]
                 quantity = line["quantity"]
@@ -308,7 +335,11 @@ def pos():
         )
         .order_by(Product.category, Product.name)
     ).all()
-    categories = sorted({p.category for p in products})
+    product_groups = {product.id: category_group(product.category) for product in products}
+    available_groups = set(product_groups.values())
+    categories = [category for category in POS_CATEGORY_LABELS if category in available_groups]
+    if "Others" in available_groups:
+        categories.append("Others")
     product_addons = {
         product.id: [
             {
@@ -329,9 +360,81 @@ def pos():
         .where(User.active.is_(True), User.role.in_(ORDER_ACCEPTOR_ROLES))
         .order_by(User.full_name, User.username)
     ).all()
-    return render_template("sales/pos.html", products=products, categories=categories, payment_methods=PAYMENT_METHODS,
+    return render_template("sales/pos.html", products=products, categories=categories,
+                           product_groups=product_groups, payment_methods=PAYMENT_METHODS,
                            checkout_token=secrets.token_urlsafe(32), order_acceptors=order_acceptors,
-                           selected_acceptor_id=selected_acceptor_id, product_addons=product_addons)
+                           selected_acceptor_id=selected_acceptor_id, product_addons=product_addons,
+                           bkash_qr_url=url_for("static", filename="qr_code.svg"),
+                           bkash_icon_url=url_for("static", filename="bkash-mark.svg"),
+                           icons_url=url_for("static", filename="icons.svg"))
+
+
+@bp.post("/pos/coupon-preview")
+@login_required
+@role_required("OWNER", "MANAGER", "CASHIER")
+def coupon_preview():
+    code = request.form.get("code", "").strip().upper()
+    if not code or len(code) > 64:
+        return jsonify(error="Enter a valid coupon code."), 400
+    coupon = db.session.scalar(
+        select(Coupon).where(
+            Coupon.code == code,
+            Coupon.is_active.is_(True),
+            Coupon.redeemed_at.is_(None),
+        )
+    )
+    if coupon is None:
+        return jsonify(error="That coupon is invalid or has already been used."), 400
+    try:
+        subtotal = decimal_value(request.form.get("subtotal"), "subtotal", minimum=Decimal("0.01"))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    if coupon.discount_type == "percent":
+        discount = (
+            subtotal * coupon.discount_value / Decimal("100")
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    else:
+        discount = coupon.discount_value
+    return jsonify(
+        code=coupon.code,
+        discount_type=coupon.discount_type,
+        discount_value=str(coupon.discount_value),
+        discount_amount=str(min(discount, subtotal)),
+    )
+
+
+@bp.get("/coupons")
+@login_required
+@role_required("OWNER", "MANAGER")
+def coupons():
+    coupon_rows = db.session.scalars(
+        select(Coupon).order_by(Coupon.code)
+    ).all()
+    return render_template("sales/coupons.html", coupons=coupon_rows)
+
+
+@bp.post("/coupons/<int:coupon_id>/reset")
+@login_required
+@role_required("OWNER", "MANAGER")
+def reset_coupon(coupon_id):
+    coupon = db.session.get(Coupon, coupon_id)
+    if coupon is None:
+        flash("That coupon does not exist.", "danger")
+        return redirect(url_for("sales.coupons"))
+    if coupon.redeemed_at is None:
+        flash(f"{coupon.code} has not been used and is already available.", "warning")
+        return redirect(url_for("sales.coupons"))
+    try:
+        coupon.redeemed_at = None
+        coupon.redeemed_order_id = None
+        audit("Reset coupon", "Coupon", coupon.id, coupon.code)
+        db.session.commit()
+        flash(f"{coupon.code} is available to use again.", "success")
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Database error while resetting a coupon.")
+        flash("The coupon could not be reset because of a database error.", "danger")
+    return redirect(url_for("sales.coupons"))
 
 
 @bp.get("/orders")

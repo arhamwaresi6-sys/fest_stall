@@ -11,8 +11,10 @@ from werkzeug.datastructures import FileStorage
 
 from project import create_app
 from project.extensions import db
+from project.food_icons import category_group, food_icon_filename
 from project.models import (
     AuditLog,
+    Coupon,
     Expense,
     Ingredient,
     IngredientTransaction,
@@ -31,6 +33,21 @@ from project.utils import (
     order_item_cost,
 )
 from settings import Config
+
+
+class FoodCategoryIconTests(unittest.TestCase):
+    def test_food_categories_have_category_groups_and_local_icons(self):
+        categories = {
+            "burgers": ("Burgers", "burger.svg"),
+            " Pizza ": ("Pizza", "pizza.svg"),
+            "beverages": ("Drinks", "drink.svg"),
+            "desserts": ("Desserts", "cake.svg"),
+            "House Special": ("Others", "other.svg"),
+        }
+        for category, expected in categories.items():
+            with self.subTest(category=category):
+                self.assertEqual(category_group(category), expected[0])
+                self.assertEqual(food_icon_filename(category), expected[1])
 
 
 class TestConfig(Config):
@@ -93,6 +110,7 @@ class WebsiteWorkflowTests(unittest.TestCase):
             "/inventory/export.pdf",
             "/orders",
             "/pos",
+            "/coupons",
             "/products/",
             "/products/new",
             "/products/1/edit",
@@ -117,6 +135,23 @@ class WebsiteWorkflowTests(unittest.TestCase):
         pos_page = self.client.get("/pos").data
         self.assertIn(b"Accepted by", pos_page)
         self.assertIn(b"cashier", pos_page)
+        self.assertIn(b"qr_code.svg", pos_page)
+        self.assertIn(b"coupon-preview", pos_page)
+        qr_response = self.client.get("/static/qr_code.svg")
+        self.assertEqual(qr_response.status_code, 200)
+        self.assertTrue(qr_response.mimetype.endswith("svg+xml"))
+        self.assertIn(b"bKash scan-to-pay QR code", qr_response.data)
+        qr_response.close()
+        icon_response = self.client.get("/static/bkash-mark.svg")
+        self.assertEqual(icon_response.status_code, 200)
+        self.assertIn(b"#df146e", icon_response.data)
+        icon_response.close()
+        pos_script_response = self.client.get("/static/js/pos.js")
+        pos_script = pos_script_response.data
+        self.assertIn(b"01978327028", pos_script)
+        self.assertNotIn("💵".encode("utf-8"), pos_script)
+        self.assertNotIn("🅱".encode("utf-8"), pos_script)
+        pos_script_response.close()
         self.assertNotIn(b"Customer or order label", pos_page)
         self.assertNotIn(b"Order reference", pos_page)
 
@@ -251,6 +286,79 @@ class WebsiteWorkflowTests(unittest.TestCase):
             ),
             1,
         )
+
+    def test_coupon_preview_stacks_and_code_is_consumed_once(self):
+        coupon = Coupon(
+            code="SAVE25",
+            discount_type="percent",
+            discount_value=25,
+        )
+        db.session.add(coupon)
+        db.session.commit()
+        preview = self.client.post(
+            "/pos/coupon-preview",
+            data={"code": "save25", "subtotal": "4.00"},
+        )
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview.json["discount_amount"], "1.00")
+
+        cashier = db.session.scalar(db.select(User).where(User.username == "cashier"))
+        checkout = {
+            "checkout_token": "workflow-coupon-1",
+            "accepted_by_id": str(cashier.id),
+            "cart": json.dumps([{"id": self.product_id, "quantity": 2}]),
+            "payments": json.dumps([{"method": "hand", "amount": "2.00"}]),
+            "discount": "25",
+            "discount_kind": "percent",
+            "coupon_code": "save25",
+        }
+        self.assertEqual(self.client.post("/pos", data=checkout).status_code, 302)
+        order = db.session.scalar(
+            db.select(Order).where(Order.checkout_token == "workflow-coupon-1")
+        )
+        self.assertEqual(str(order.discount), "2.00")
+        self.assertEqual(str(order.total), "2.00")
+        db.session.refresh(coupon)
+        self.assertIsNotNone(coupon.redeemed_at)
+        self.assertEqual(coupon.redeemed_order_id, order.id)
+
+        preview = self.client.post(
+            "/pos/coupon-preview",
+            data={"code": "SAVE25", "subtotal": "2.00"},
+        )
+        self.assertEqual(preview.status_code, 400)
+        coupon_page = self.client.get("/coupons")
+        self.assertIn(b"SAVE25", coupon_page.data)
+        self.assertIn(b"Reset code", coupon_page.data)
+        reset_response = self.client.post(f"/coupons/{coupon.id}/reset")
+        self.assertEqual(reset_response.status_code, 302)
+        db.session.refresh(coupon)
+        self.assertIsNone(coupon.redeemed_at)
+        self.assertIsNone(coupon.redeemed_order_id)
+        preview = self.client.post(
+            "/pos/coupon-preview",
+            data={"code": "SAVE25", "subtotal": "2.00"},
+        )
+        self.assertEqual(preview.status_code, 200)
+        checkout.update(
+            checkout_token="workflow-coupon-2",
+            cart=json.dumps([{"id": self.product_id, "quantity": 1}]),
+            payments="[]",
+        )
+        self.assertEqual(self.client.post("/pos", data=checkout).status_code, 302)
+        self.assertIsNotNone(
+            db.session.scalar(
+                db.select(Coupon.redeemed_at).where(Coupon.id == coupon.id)
+            )
+        )
+        product = db.session.get(Product, self.product_id)
+        self.assertEqual(product.stock, 7)
+
+    def test_coupon_management_is_limited_to_financial_roles(self):
+        self.client.post("/auth/logout")
+        self.login("cashier", "cashier-password-123")
+        self.assertEqual(self.client.get("/coupons").status_code, 403)
+        self.assertEqual(self.client.post("/coupons/1/reset").status_code, 403)
 
     def test_dashboard_shows_payment_and_top_revenue_charts(self):
         high_revenue_product = Product(

@@ -25,6 +25,7 @@
       <div class="side-label side-label-spaced">MANAGE</div>
       <a class="nav-link {% if request.endpoint and request.endpoint.startswith('expenses.') %}active{% endif %}" href="{{ url_for('expenses.index') }}">{{ icon('wallet') }} Expenses</a>
       <a class="nav-link {% if request.endpoint and request.endpoint.startswith('reports.') %}active{% endif %}" href="{{ url_for('reports.index') }}">{{ icon('chart') }} Reports</a>
+      <a class="nav-link {% if request.endpoint == 'sales.coupons' %}active{% endif %}" href="{{ url_for('sales.coupons') }}">{{ icon('receipt') }} Coupons</a>
       {% endif %}
       {% if current_user.role == 'ROOT' %}
       <a class="nav-link {% if request.endpoint and request.endpoint.startswith('team.') %}active{% endif %}" href="{{ url_for('team.index') }}">{{ icon('users') }} Team & approvals</a>
