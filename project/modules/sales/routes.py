@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import delete, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
@@ -106,12 +106,15 @@ def pos():
             )
             if accepted_by is None:
                 raise ValueError("Choose an active user who can accept orders.")
+            customer_name = request.form.get("customer_name", "").strip()
+            customer_phone = request.form.get("customer_phone", "").strip()
+            if len(customer_name) > 120:
+                raise ValueError("Client name must be 120 characters or fewer.")
+            if len(customer_phone) > 32:
+                raise ValueError("Phone number must be 32 characters or fewer.")
             cart = json.loads(request.form.get("cart", "[]"))
-            payment_rows = json.loads(request.form.get("payments", "[]"))
             if not isinstance(cart, list) or not cart or len(cart) > 100:
                 raise ValueError("Add at least one product to the cart.")
-            if not isinstance(payment_rows, list) or len(payment_rows) > 100:
-                raise ValueError("Payment details are invalid.")
             lines = []
             quantities = {}
             for row in cart:
@@ -231,21 +234,13 @@ def pos():
                     coupon_discount = coupon.discount_value
                 coupon_discount = min(coupon_discount, subtotal - discount)
             total = subtotal - discount - coupon_discount
-            valid_payments = []
-            for payment in payment_rows:
-                if not isinstance(payment, dict):
-                    raise ValueError("Payment details are invalid.")
-                method = payment.get("method")
-                if method not in PAYMENT_METHODS:
-                    raise ValueError("Choose By hand (cash) or bKash for each payment.")
-                amount = decimal_value(payment.get("amount"), "payment", minimum=Decimal("0.01"))
-                valid_payments.append((method, amount, str(payment.get("reference", ""))[:120]))
-            if sum((p[1] for p in valid_payments), Decimal("0.00")) > total:
-                raise ValueError("Payments cannot exceed the amount due.")
 
             order = Order(order_number=f"FS-{datetime.now(timezone.utc):%y%m%d}-{uuid4().hex[:6].upper()}",
                           checkout_token=checkout_token,
+                          status="Pending",
                           subtotal=subtotal, discount=discount + coupon_discount, total=total,
+                          customer_name=customer_name or None,
+                          customer_phone=customer_phone or None,
                           notes=request.form.get("notes", "").strip()[:2000] or None,
                           created_by_id=current_user.id,
                           accepted_by_id=accepted_by.id)
@@ -303,9 +298,6 @@ def pos():
                         order_id=order.id,
                     )
                 )
-            for method, amount, reference in valid_payments:
-                order.payments.append(Payment(amount=amount, method=method, status="Recorded", reference_id=reference or None,
-                                              recorded_by_id=current_user.id))
             refresh_order_payment_status(order)
             audit("Created order", "Order", order.id, order.order_number)
             db.session.commit()
@@ -351,7 +343,7 @@ def pos():
                 "price": str(addon.unit_price),
             }
             for addon in product.addons
-            if addon.ingredient.active
+            if addon.ingredient is not None and addon.ingredient.active
         ]
         for product in products
     }
@@ -444,11 +436,12 @@ def orders():
     statement = (
         select(Order)
         .options(
+            selectinload(Order.items),
             selectinload(Order.payments),
             joinedload(Order.created_by),
             joinedload(Order.accepted_by),
         )
-        .order_by(Order.created_at.desc())
+        .order_by(case((Order.status == "Pending", 0), else_=1), Order.created_at.desc())
     )
     query = request.args.get("q", "").strip()
     method = request.args.get("method", "")
@@ -463,17 +456,20 @@ def orders():
         _, window_end = date_window(date_to, date_to)
         statement = statement.where(Order.created_at < window_end)
     if query:
-        statement = statement.where(or_(Order.order_number.ilike(f"%{query}%"), Order.customer_name.ilike(f"%{query}%"), Order.reference.ilike(f"%{query}%")))
-    if status in {"Completed", "Cancelled", "Refunded"}:
+        statement = statement.where(or_(Order.order_number.ilike(f"%{query}%"), Order.customer_name.ilike(f"%{query}%"), Order.customer_phone.ilike(f"%{query}%"), Order.reference.ilike(f"%{query}%")))
+    if status in {"Pending", "Completed", "Cancelled", "Refunded"}:
         statement = statement.where(Order.status == status)
     if payment_status in {"Paid", "Partially paid", "Unpaid", "Refunded"}:
         statement = statement.where(Order.payment_status == payment_status)
     found = db.session.scalars(statement.limit(300)).all()
+    pending_count = db.session.scalar(
+        select(func.count(Order.id)).where(Order.status == "Pending")
+    ) or 0
     if method in PAYMENT_METHODS:
         found = [o for o in found if any(p.method == method and p.status == "Recorded" for p in o.payments)]
     return render_template("orders/index.html", orders=found, q=query, selected_method=method, selected_status=status,
                            selected_payment_status=payment_status, date_from=date_from, date_to=date_to,
-                           payment_methods=PAYMENT_METHODS)
+                           payment_methods=PAYMENT_METHODS, pending_count=pending_count)
 
 
 @bp.get("/orders/<int:order_id>")
@@ -499,6 +495,296 @@ def order_detail(order_id):
                            payment_methods=PAYMENT_METHODS, payment_names=PAYMENT_METHODS)
 
 
+def order_edit_context(order):
+    products = db.session.scalars(
+        select(Product)
+        .options(selectinload(Product.addons).joinedload(ProductAddon.ingredient))
+        .where(
+            Product.is_archived.is_(False),
+            Product.is_available.is_(True),
+            Product.stock > 0,
+        )
+        .order_by(Product.category, Product.name)
+    ).all()
+    product_addons = {
+        product.id: [
+            {
+                "id": addon.ingredient_id,
+                "name": addon.ingredient.name,
+                "unit": addon.ingredient.unit,
+                "stock": str(addon.ingredient.stock),
+                "amount": str(addon.quantity_used),
+                "price": str(addon.unit_price),
+            }
+            for addon in product.addons
+            if addon.ingredient.active
+        ]
+        for product in products
+    }
+    return {"order": order, "products": products, "product_addons": product_addons}
+
+
+@bp.route("/orders/<int:order_id>/edit", methods=["GET", "POST"])
+@login_required
+@role_required("OWNER", "MANAGER", "CASHIER")
+def edit_order(order_id):
+    statement = (
+        select(Order)
+        .options(
+            selectinload(Order.items).selectinload(OrderItem.addons),
+            selectinload(Order.items).joinedload(OrderItem.product),
+            selectinload(Order.payments),
+        )
+        .where(Order.id == order_id)
+    )
+    if request.method == "POST":
+        statement = statement.with_for_update()
+    order = db.session.scalar(statement)
+    if order is None:
+        from flask import abort
+        abort(404)
+    if order.status != "Pending":
+        flash("Only pending orders can be edited.", "danger")
+        return redirect(url_for("sales.order_detail", order_id=order.id))
+    if request.method == "GET":
+        return render_template("orders/edit.html", **order_edit_context(order))
+
+    try:
+        removed_ids = set()
+        kept_items = []
+        desired_existing_quantities = {}
+        old_product_quantities = {}
+        new_product_quantities = {}
+        old_ingredient_quantities = {}
+        new_ingredient_quantities = {}
+
+        for item in order.items:
+            if item.product_id is not None:
+                old_product_quantities[item.product_id] = old_product_quantities.get(item.product_id, 0) + item.quantity
+            for addon in item.addons:
+                if addon.ingredient_id is not None:
+                    old_ingredient_quantities[addon.ingredient_id] = (
+                        old_ingredient_quantities.get(addon.ingredient_id, Decimal("0.000"))
+                        + addon.quantity_per_product * item.quantity
+                    )
+            if request.form.get(f"remove_item_{item.id}") == "1":
+                removed_ids.add(item.id)
+                continue
+            try:
+                quantity = int(request.form.get(f"quantity_{item.id}", ""))
+            except (TypeError, ValueError):
+                raise ValueError(f"Enter a whole-number quantity for {item.product_name}.")
+            if quantity < 1 or quantity > 999:
+                raise ValueError("Each item quantity must be between 1 and 999.")
+            if quantity > item.quantity:
+                product = item.product
+                if product is None or product.is_archived or not product.is_available:
+                    raise ValueError(f"{item.product_name} is no longer available to increase.")
+            desired_existing_quantities[item.id] = quantity
+            kept_items.append(item)
+            if item.product_id is not None:
+                new_product_quantities[item.product_id] = new_product_quantities.get(item.product_id, 0) + quantity
+            for addon in item.addons:
+                if addon.ingredient_id is not None:
+                    new_ingredient_quantities[addon.ingredient_id] = (
+                        new_ingredient_quantities.get(addon.ingredient_id, Decimal("0.000"))
+                        + addon.quantity_per_product * quantity
+                    )
+
+        try:
+            additions = json.loads(request.form.get("additions", "[]"))
+        except json.JSONDecodeError:
+            raise ValueError("Added item details are invalid.")
+        if not isinstance(additions, list) or len(additions) > 100:
+            raise ValueError("Added item details are invalid.")
+        normalized_additions = []
+        added_product_ids = set()
+        for row in additions:
+            if not isinstance(row, dict):
+                raise ValueError("Added item details are invalid.")
+            try:
+                product_id = int(row.get("id"))
+                quantity = int(row.get("quantity"))
+                addon_ids = [int(addon_id) for addon_id in row.get("addons", [])]
+            except (TypeError, ValueError):
+                raise ValueError("Added item details are invalid.")
+            if quantity < 1 or quantity > 999:
+                raise ValueError("Each added quantity must be between 1 and 999.")
+            if not isinstance(row.get("addons", []), list) or len(addon_ids) > 50 or len(set(addon_ids)) != len(addon_ids):
+                raise ValueError("Product extra details are invalid.")
+            normalized_additions.append({"product_id": product_id, "quantity": quantity, "addon_ids": addon_ids})
+            added_product_ids.add(product_id)
+
+        product_ids = set(old_product_quantities) | added_product_ids
+        product_rows = db.session.scalars(
+            select(Product)
+            .options(selectinload(Product.addons).joinedload(ProductAddon.ingredient))
+            .where(Product.id.in_(sorted(product_ids)))
+            .order_by(Product.id)
+            .with_for_update()
+        ).all() if product_ids else []
+        products_by_id = {product.id: product for product in product_rows}
+        if not set(products_by_id).issuperset(added_product_ids):
+            raise ValueError("One of the selected products is no longer available.")
+
+        for addition in normalized_additions:
+            product = products_by_id[addition["product_id"]]
+            if product.is_archived or not product.is_available:
+                raise ValueError(f"{product.name} is not available for sale.")
+            addon_by_ingredient = {
+                addon.ingredient_id: addon
+                for addon in product.addons
+                if addon.ingredient is not None and addon.ingredient.active
+            }
+            if any(addon_id not in addon_by_ingredient for addon_id in addition["addon_ids"]):
+                raise ValueError(f"One of the selected extras is not available for {product.name}.")
+            addition["product"] = product
+            addition["addons"] = [addon_by_ingredient[addon_id] for addon_id in addition["addon_ids"]]
+            new_product_quantities[product.id] = new_product_quantities.get(product.id, 0) + addition["quantity"]
+            for addon in addition["addons"]:
+                ingredient_id = addon.ingredient_id
+                new_ingredient_quantities[ingredient_id] = (
+                    new_ingredient_quantities.get(ingredient_id, Decimal("0.000"))
+                    + addon.quantity_used * addition["quantity"]
+                )
+
+        if not kept_items and not normalized_additions:
+            raise ValueError("An order must keep at least one item.")
+        if any(quantity > 999 for quantity in new_product_quantities.values()):
+            raise ValueError("A product quantity cannot exceed 999.")
+
+        ingredient_ids = set(old_ingredient_quantities) | set(new_ingredient_quantities)
+        ingredients = db.session.scalars(
+            select(Ingredient)
+            .where(Ingredient.id.in_(sorted(ingredient_ids)))
+            .order_by(Ingredient.id)
+            .with_for_update()
+        ).all() if ingredient_ids else []
+        ingredients_by_id = {ingredient.id: ingredient for ingredient in ingredients}
+
+        for product_id in set(old_product_quantities) | set(new_product_quantities):
+            product = products_by_id.get(product_id)
+            if product is None:
+                continue
+            difference = new_product_quantities.get(product_id, 0) - old_product_quantities.get(product_id, 0)
+            if difference > 0 and product.stock < difference:
+                raise ValueError(f"Not enough stock for {product.name}; only {product.stock} left.")
+        for ingredient_id in ingredient_ids:
+            difference = new_ingredient_quantities.get(ingredient_id, Decimal("0.000")) - old_ingredient_quantities.get(ingredient_id, Decimal("0.000"))
+            ingredient = ingredients_by_id.get(ingredient_id)
+            if difference > 0 and (ingredient is None or not ingredient.active):
+                raise ValueError("One of the selected ingredients is no longer available.")
+            if difference > 0 and ingredient.stock < difference:
+                raise ValueError(f"Not enough {ingredient.name}; only {ingredient.stock} {ingredient.unit} left.")
+
+        discount = order.discount
+        if current_user.role in FINANCIAL_ROLES:
+            discount = decimal_value(request.form.get("discount", "0"), "discount")
+        subtotal = Decimal("0.00")
+        for item in kept_items:
+            quantity = desired_existing_quantities[item.id]
+            unit_price = item.unit_price + sum((addon.unit_price for addon in item.addons), Decimal("0.00"))
+            item.quantity = quantity
+            item.line_total = unit_price * quantity
+            subtotal += item.line_total
+        for item in list(order.items):
+            if item.id in removed_ids:
+                order.items.remove(item)
+        for addition in normalized_additions:
+            product = addition["product"]
+            quantity = addition["quantity"]
+            addons = addition["addons"]
+            unit_price = product.selling_price + sum((addon.unit_price for addon in addons), Decimal("0.00"))
+            order_item = OrderItem(
+                product_id=product.id,
+                product_name=product.name,
+                unit_price=product.selling_price,
+                unit_cost=product.cost_price,
+                quantity=quantity,
+                line_total=unit_price * quantity,
+            )
+            for addon in addons:
+                ingredient = addon.ingredient
+                order_item.addons.append(
+                    OrderItemAddon(
+                        ingredient_id=ingredient.id,
+                        ingredient_name=ingredient.name,
+                        ingredient_unit=ingredient.unit,
+                        quantity_per_product=addon.quantity_used,
+                        unit_price=addon.unit_price,
+                        unit_cost=ingredient.unit_cost,
+                    )
+                )
+            order.items.append(order_item)
+            subtotal += order_item.line_total
+
+        if discount > subtotal:
+            raise ValueError("Discount cannot exceed the updated subtotal.")
+        total = subtotal - discount
+        received = sum((payment.amount for payment in order.payments if payment.status == "Recorded"), Decimal("0.00"))
+        if total < received:
+            raise ValueError("The new total cannot be less than payments already recorded.")
+
+        for product_id in set(old_product_quantities) | set(new_product_quantities):
+            product = products_by_id.get(product_id)
+            if product is None:
+                continue
+            difference = new_product_quantities.get(product_id, 0) - old_product_quantities.get(product_id, 0)
+            if difference:
+                previous = product.stock
+                product.stock -= difference
+                db.session.add(
+                    InventoryTransaction(
+                        product_id=product.id,
+                        previous_quantity=previous,
+                        quantity_changed=-difference,
+                        new_quantity=product.stock,
+                        kind="Order edit",
+                        reason=f"Order {order.order_number}: items edited",
+                        user_id=current_user.id,
+                        order_id=order.id,
+                    )
+                )
+        for ingredient_id in ingredient_ids:
+            ingredient = ingredients_by_id.get(ingredient_id)
+            if ingredient is None:
+                continue
+            difference = new_ingredient_quantities.get(ingredient_id, Decimal("0.000")) - old_ingredient_quantities.get(ingredient_id, Decimal("0.000"))
+            if difference:
+                previous = ingredient.stock
+                ingredient.stock -= difference
+                db.session.add(
+                    IngredientTransaction(
+                        ingredient_id=ingredient.id,
+                        previous_quantity=previous,
+                        quantity_changed=-difference,
+                        new_quantity=ingredient.stock,
+                        kind="Order edit",
+                        reason=f"Order {order.order_number}: items edited",
+                        user_id=current_user.id,
+                        order_id=order.id,
+                    )
+                )
+
+        order.subtotal = subtotal
+        order.discount = discount
+        order.total = total
+        refresh_order_payment_status(order)
+        audit("Edited order", "Order", order.id, f"{order.order_number}: subtotal {subtotal}, discount {discount}, total {total}")
+        db.session.commit()
+        flash(f"Order {order.order_number} updated.", "success")
+        return redirect(url_for("sales.order_detail", order_id=order.id))
+    except (ValueError, TypeError) as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+        return redirect(url_for("sales.edit_order", order_id=order_id))
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Database error while editing an order.")
+        flash("The order could not be updated because of a database error.", "danger")
+        return redirect(url_for("sales.edit_order", order_id=order_id))
+
+
 @bp.post("/orders/<int:order_id>/delete")
 @login_required
 @role_required("OWNER", "MANAGER")
@@ -512,7 +798,7 @@ def delete_order(order_id):
     if order is None:
         from flask import abort
         abort(404)
-    if order.status == "Completed":
+    if order.status in {"Pending", "Completed"}:
         restore_order_stock(order, "Order deletion", "Order permanently deleted")
     db.session.execute(
         delete(InventoryTransaction).where(InventoryTransaction.order_id == order.id)
@@ -524,6 +810,26 @@ def delete_order(order_id):
     db.session.delete(order)
     db.session.commit()
     flash(f"Order {order.order_number} deleted and applicable stock restored.", "success")
+    return redirect(url_for("sales.orders"))
+
+
+@bp.post("/orders/<int:order_id>/complete")
+@login_required
+@role_required("OWNER", "MANAGER", "CASHIER")
+def complete_order(order_id):
+    order = db.session.scalar(
+        select(Order).where(Order.id == order_id).with_for_update()
+    )
+    if order is None:
+        from flask import abort
+        abort(404)
+    if order.status != "Pending":
+        flash("Only pending orders can be marked complete.", "danger")
+        return redirect(url_for("sales.orders"))
+    order.status = "Completed"
+    audit("Completed order", "Order", order.id, order.order_number)
+    db.session.commit()
+    flash(f"Order {order.order_number} marked complete.", "success")
     return redirect(url_for("sales.orders"))
 
 
@@ -541,8 +847,8 @@ def add_payment(order_id):
         from flask import abort
         abort(404)
     try:
-        if order.status != "Completed":
-            raise ValueError("Payments can only be added to completed orders.")
+        if order.status not in {"Pending", "Completed"}:
+            raise ValueError("Payments can only be added to pending or completed orders.")
         method = request.form.get("method")
         if method not in PAYMENT_METHODS:
             raise ValueError("Choose By hand (cash) or bKash.")
@@ -579,8 +885,8 @@ def void_order(order_id):
         from flask import abort
         abort(404)
     reason = request.form.get("reason", "").strip()
-    if order.status != "Completed" or len(reason) < 4:
-        flash("Enter a cancellation reason (at least 4 characters) for a completed order.", "danger")
+    if order.status not in {"Pending", "Completed"} or len(reason) < 4:
+        flash("Enter a cancellation reason (at least 4 characters) for a pending or completed order.", "danger")
         return redirect(url_for("sales.order_detail", order_id=order.id))
     restore_order_stock(order, "Cancellation", reason, order_id=order.id)
     for payment in order.payments:

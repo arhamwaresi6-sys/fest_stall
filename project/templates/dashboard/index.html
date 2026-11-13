@@ -6,7 +6,7 @@
  <article class="stat-card stat-red"><div class="stat-top"><span>Sales revenue</span><span class="stat-icon">{{ icon('arrow-up-right') }}</span></div><strong>{{ total_revenue|money }}</strong><small>Completed orders</small></article>
  <article class="stat-card"><div class="stat-top"><span>Orders</span><span class="stat-icon yellow-icon">{{ icon('receipt') }}</span></div><strong>{{ order_count }}</strong><small>In selected period</small></article>
  <article class="stat-card"><div class="stat-top"><span>Gross profit</span><span class="stat-icon mint-icon">{{ icon('sparkles') }}</span></div><strong>{{ (total_revenue-total_cogs)|money }}</strong><small>After product costs</small></article>
- <article class="stat-card"><div class="stat-top"><span>Expense cost recognized</span><span class="stat-icon">−</span></div><strong>{{ expense_total|money }}</strong><small>Only the selected dates’ allocated expense</small></article>
+ <article class="stat-card"><div class="stat-top"><span>Expense cost recognized</span><span class="stat-icon">{{ icon('wallet') }}</span></div><strong>{{ expense_total|money }}</strong><small>Only the selected dates’ allocated expense</small></article>
  <article class="stat-card stat-dark"><div class="stat-top"><span>Period net profit</span><span class="stat-icon">{{ icon('currency') }}</span></div><strong>{{ net_profit|money }}</strong><small>Revenue − product costs − recognized expense</small></article>
 </div>
 <section class="profit-formula-panel" aria-label="How period net profit is calculated">
@@ -26,6 +26,26 @@
 <section class="panel chart-panel expense-deduction-panel">
  <div class="chart-heading"><div><p class="eyebrow">HOW COSTS REDUCE PROFIT</p><h2>Daily expense deductions</h2><p class="muted">Allocated charges from {{ start_date }} through {{ end_date }}.</p></div><a class="text-link" href="{{ url_for('expenses.index') }}">Manage expenses →</a></div>
  {% if expense_deduction_count %}<div class="expense-schedule-summary"><span>{{ expense_deduction_count }} expense{{ '' if expense_deduction_count == 1 else 's' }} · {{ daily_expense_schedule|length }} date{{ '' if daily_expense_schedule|length == 1 else 's' }} with deductions</span><b>Period total <strong class="danger-text">− {{ expense_total|money }}</strong></b></div><div class="daily-expense-scroll" role="region" aria-label="Daily expense deductions from {{ start_date }} through {{ end_date }}" tabindex="0">{% for day in daily_expense_schedule %}<article class="daily-expense-day"><header><div><span class="expense-day-marker" aria-hidden="true"></span><b>{{ day.date.strftime('%a, %d %b %Y') }}</b></div><strong class="danger-text">− {{ day.total|money }}</strong></header><ul>{% for item in day.expenses %}<li><span>{{ item.title }}</span><b>− {{ item.amount|money }}</b></li>{% endfor %}</ul></article>{% endfor %}</div><p class="chart-footnote">Daily details include every expense charge in the period. Any rounding cents are distributed so each schedule totals exactly to its recorded amount.</p>{% else %}<div class="empty-inline">No scheduled expense deductions in these dates.</div>{% endif %}
+</section>
+<section class="panel chart-panel sales-trend-panel">
+ <div class="chart-heading sales-trend-heading"><div><p class="eyebrow">REVENUE TREND</p><h2>Sales over time</h2><p class="muted">Completed order revenue in the selected period.</p></div><div class="sales-trend-total"><small>Period total</small><strong>{{ total_revenue|money }}</strong></div></div>
+ {% if chart_sales_max > 0 %}
+ {% set trend_points = chart_sales|length %}
+ <div class="sales-trend-wrap">
+  <svg class="sales-trend-svg" viewBox="0 0 720 210" preserveAspectRatio="none" role="img" aria-label="{{ 'Weekly' if chart_weekly else 'Daily' }} sales revenue trend from {{ start_date }} through {{ end_date }}">
+   <defs><linearGradient id="salesTrendFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#d9383a" stop-opacity=".2"/><stop offset="100%" stop-color="#d9383a" stop-opacity="0"/></linearGradient></defs>
+   <g class="sales-trend-grid" aria-hidden="true"><line x1="30" y1="20" x2="690" y2="20"/><line x1="30" y1="62.5" x2="690" y2="62.5"/><line x1="30" y1="105" x2="690" y2="105"/><line x1="30" y1="147.5" x2="690" y2="147.5"/><line x1="30" y1="190" x2="690" y2="190"/></g>
+   {% if trend_points > 1 %}<polygon class="sales-trend-area" points="30,190 {% for i in range(trend_points) %}{{ (30 + (660 * i / (trend_points - 1)))|round(2) }},{{ (190 - (chart_sales[i] / chart_sales_max * 170))|round(2) }} {% endfor %}690,190"/>{% endif %}
+   <polyline class="sales-trend-line" points="{% for i in range(trend_points) %}{{ (360 if trend_points == 1 else 30 + (660 * i / (trend_points - 1)))|round(2) }},{{ (190 - (chart_sales[i] / chart_sales_max * 170))|round(2) }} {% endfor %}"/>
+   {% for i in range(trend_points) %}<circle class="sales-trend-point" cx="{{ (360 if trend_points == 1 else 30 + (660 * i / (trend_points - 1)))|round(2) }}" cy="{{ (190 - (chart_sales[i] / chart_sales_max * 170))|round(2) }}" r="4"><title>{{ chart_labels[i] }} · {{ chart_sales[i]|money }}</title></circle>{% endfor %}
+  </svg>
+ </div>
+ <div class="sales-trend-labels" aria-hidden="true">
+  {% set label_interval = 1 if trend_points <= 8 else 2 if trend_points <= 16 else 4 if trend_points <= 32 else 8 %}
+  {% for label in chart_labels %}{% if loop.first or loop.last or loop.index0 % label_interval == 0 %}<span class="sales-trend-label{% if trend_points == 1 %} is-single{% elif loop.first %} is-first{% elif loop.last %} is-last{% endif %}" style="--label-position:{{ (50 if trend_points == 1 else loop.index0 / (trend_points - 1) * 100)|round(2) }}%">{{ label }}</span>{% endif %}{% endfor %}
+ </div>
+ <p class="chart-footnote">{{ 'Weekly totals' if chart_weekly else 'Daily totals' }} · {{ start_date }} to {{ end_date }}</p>
+ {% else %}<div class="empty-inline">No completed sales in this period to show a revenue trend.</div>{% endif %}
 </section>
 <div class="dashboard-charts">
  <section class="panel chart-panel">

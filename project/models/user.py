@@ -10,6 +10,8 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(254), unique=True, index=True)
     full_name = db.Column(db.String(120), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+    google_sub = db.Column(db.String(255), unique=True, nullable=True, index=True)
+    google_picture_url = db.Column(db.String(2048), nullable=True)
     role = db.Column(db.String(20), nullable=False, default="CASHIER", index=True)
     active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

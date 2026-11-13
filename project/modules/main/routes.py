@@ -11,7 +11,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
 
 from ...extensions import db
-from ...image_uploads import save_image
 from ...models import AuditLog, Expense, Order, OrderItem, Payment, Product, Setting
 from ...utils import FINANCIAL_ROLES, PAYMENT_METHODS, audit, expense_amount_between, expense_amount_remaining, lifetime_sales_totals, net_order_item_amounts, order_item_cost, selected_window
 
@@ -168,6 +167,7 @@ def dashboard():
                            top_revenue_products=top_revenue_products,
                            top_product_revenue=top_product_revenue,
                            chart_labels=chart_labels, chart_sales=chart_sales, chart_expenses=chart_expenses,
+                           chart_sales_max=max(chart_sales, default=Decimal("0.00")),
                            chart_max=max(chart_sales + chart_expenses, default=Decimal("0.00")), chart_weekly=use_weeks,
                            payment_shares=payment_shares, today_local=today_local,
                            yesterday_local=today_local-timedelta(days=1), week_start=today_local-timedelta(days=6))
@@ -197,37 +197,29 @@ def settings():
             row = db.session.get(Setting, key) or Setting(key=key, value="")
             row.value = str(threshold) if key == "low_stock_threshold" else request.form.get(key, "").strip()[:300]
             db.session.add(row)
-        try:
-            logo_filename = save_image(request.files.get("logo"), "logos")
-        except ValueError as exc:
-            db.session.rollback()
-            flash(str(exc), "danger")
-            return redirect(url_for("main.settings"))
-        if logo_filename:
-            logo = db.session.get(Setting, "logo_filename") or Setting(key="logo_filename", value="")
-            logo.value = logo_filename
-            db.session.add(logo)
         audit("Updated stall settings", "Setting")
         db.session.commit()
         flash("Stall settings saved.", "success")
         return redirect(url_for("main.settings"))
     values = {key: (db.session.get(Setting, key).value if db.session.get(Setting, key) else "") for key in keys}
-    logo = db.session.get(Setting, "logo_filename")
-    values["logo_filename"] = logo.value if logo else ""
+    if values.get("stall_name") in {"", "Festival Bites"}:
+        values["stall_name"] = "HeHeFoodies"
     return render_template("settings/index.html", values=values)
 
 
 @bp.app_context_processor
 def inject_stall_name():
-    keys = ("stall_name", "contact_info", "receipt_footer", "currency", "logo_filename")
+    keys = ("stall_name", "contact_info", "receipt_footer", "currency")
     values = {
         row.key: row.value
         for row in db.session.scalars(select(Setting).where(Setting.key.in_(keys)))
     }
+    stall_name = values.get("stall_name", "").strip()
+    if stall_name in {"", "Festival Bites"}:
+        stall_name = "HeHeFoodies"
     return {
-        "stall_name": values.get("stall_name") or "Festival Bites",
+        "stall_name": stall_name,
         "stall_contact": values.get("contact_info", ""),
         "receipt_footer": values.get("receipt_footer", ""),
-        "stall_logo": values.get("logo_filename", ""),
         "currency_symbol": values.get("currency", "").strip() or "৳",
     }

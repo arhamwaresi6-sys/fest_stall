@@ -4,8 +4,9 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}{{ stall_name }}{% endblock %} · Stall Desk</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='brand-mascot.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Manrope:wght@400..800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   {% block head %}{% endblock %}
 </head>
@@ -13,7 +14,10 @@
 {% if current_user.is_authenticated %}
 <div class="app-shell">
   <aside class="sidebar" id="sidebar">
-    <a class="brand" href="{{ url_for('main.dashboard') }}">{% if stall_logo %}<img class="brand-image" src="{{ url_for('main.private_upload', filename=stall_logo) }}" alt="">{% else %}<span class="brand-mark">🍔</span>{% endif %}<span><b>{{ stall_name }}</b><small>STALL DESK</small></span></a>
+    <a class="brand brand-lockup" href="{{ url_for('main.dashboard') }}" aria-label="{{ stall_name }} - Stall Desk home">
+      <img class="brand-wordmark" src="{{ url_for('static', filename='brand-logo.svg') }}" alt="Stall Desk">
+      <span class="brand-store-name">{{ stall_name }}</span>
+    </a>
     <div class="side-label">WORKSPACE</div>
     <nav class="side-nav">
       <a class="nav-link {% if request.endpoint == 'main.dashboard' %}active{% endif %}" href="{{ url_for('main.dashboard') }}">{{ icon('dashboard') }} Overview</a>
@@ -41,7 +45,7 @@
   </aside>
   <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="Close navigation" tabindex="-1"></button>
   <main class="main-area">
-    <header class="topbar"><button class="mobile-menu" id="menuToggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar">{{ icon('menu') }}</button><div><small class="eyebrow">FESTIVAL OPERATIONS</small><div class="topbar-title">{% block page_title %}Overview{% endblock %}</div></div><div class="topbar-right"><span class="today-pill"><i class="status-dot"></i>{{ now.strftime('%a, %d %b') }}</span><span class="avatar avatar-small">{{ current_user.full_name[:1]|upper }}</span></div></header>
+    <header class="topbar"><button class="mobile-menu" id="menuToggle" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="sidebar">{{ icon('menu') }}</button><div><small class="eyebrow">{{ stall_name|upper }} OPERATIONS</small><div class="topbar-title">{% block page_title %}Overview{% endblock %}</div></div><div class="topbar-right"><span class="today-pill"><i class="status-dot"></i>{{ now.strftime('%a, %d %b') }}</span><span class="avatar avatar-small">{{ current_user.full_name[:1]|upper }}</span></div></header>
     <section class="content">
       {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="flash-stack">{% for category, message in messages %}<div class="flash flash-{{ category }}">{{ message }}<button onclick="this.parentElement.remove()" aria-label="Dismiss">{{ icon('close') }}</button></div>{% endfor %}</div>{% endif %}{% endwith %}
       {% block content %}{% endblock %}

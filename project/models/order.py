@@ -6,12 +6,13 @@ class Order(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     order_number = db.Column(db.String(32), unique=True, nullable=False, index=True)
     checkout_token = db.Column(db.String(64), unique=True, index=True)
-    status = db.Column(db.String(20), nullable=False, default="Completed", index=True)
+    status = db.Column(db.String(20), nullable=False, default="Pending", index=True)
     payment_status = db.Column(db.String(20), nullable=False, default="Unpaid", index=True)
     subtotal = db.Column(db.Numeric(12, 2), nullable=False)
     discount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     total = db.Column(db.Numeric(12, 2), nullable=False)
     customer_name = db.Column(db.String(120))
+    customer_phone = db.Column(db.String(32))
     reference = db.Column(db.String(120))
     notes = db.Column(db.Text)
     cancellation_reason = db.Column(db.Text)
@@ -26,7 +27,7 @@ class Order(db.Model):
     accepted_by = db.relationship("User", foreign_keys=[accepted_by_id], backref="accepted_orders")
     items = db.relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     payments = db.relationship("Payment", back_populates="order", cascade="all, delete-orphan")
-    __table_args__ = (db.CheckConstraint("status IN ('Completed', 'Cancelled', 'Refunded')", name="ck_order_status_allowed"),
+    __table_args__ = (db.CheckConstraint("status IN ('Pending', 'Completed', 'Cancelled', 'Refunded')", name="ck_order_status_allowed"),
                       db.CheckConstraint("payment_status IN ('Paid', 'Partially paid', 'Unpaid', 'Refunded')", name="ck_order_payment_status_allowed"))
 
 

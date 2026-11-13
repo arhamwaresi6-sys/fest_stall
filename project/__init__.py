@@ -3,6 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import click
+from authlib.integrations.flask_client import OAuth
 from flask import Flask, g, render_template
 from flask_login import current_user
 from sqlalchemy import inspect, select
@@ -26,6 +27,19 @@ def create_app(config_object=Config):
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
+    oauth = OAuth(app)
+    app.extensions["google_oauth"] = oauth
+    if app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"]:
+        oauth.register(
+            name="google",
+            client_id=app.config["GOOGLE_CLIENT_ID"],
+            client_secret=app.config["GOOGLE_CLIENT_SECRET"],
+            server_metadata_url=app.config["GOOGLE_DISCOVERY_URL"],
+            client_kwargs={
+                "scope": "openid email profile",
+                "code_challenge_method": "S256",
+            },
+        )
 
     from .modules.auth.routes import bp as auth_bp
     from .modules.main.routes import bp as main_bp
@@ -87,7 +101,13 @@ def create_app(config_object=Config):
 
     @app.context_processor
     def inject_shell_values():
-        return {"now": datetime.now(ZoneInfo("Asia/Dhaka")), "active_user": current_user}
+        return {
+            "now": datetime.now(ZoneInfo("Asia/Dhaka")),
+            "active_user": current_user,
+            "google_oauth_enabled": bool(
+                app.config["GOOGLE_CLIENT_ID"] and app.config["GOOGLE_CLIENT_SECRET"]
+            ),
+        }
 
     def schema_issues(require_all_tables=True):
         inspector = inspect(db.engine)

@@ -215,7 +215,7 @@ def delete_product(product_id):
     if orders:
         from ..sales.routes import restore_order_stock
         for order in orders:
-            if order.status == "Completed":
+            if order.status in {"Pending", "Completed"}:
                 restore_order_stock(
                     order,
                     "Order deletion",

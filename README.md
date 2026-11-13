@@ -18,6 +18,8 @@ Copy-Item .env.example .env
 
 Edit `backend/.env` and set a private random `SECRET_KEY`. The example uses a local SQLite database so the app can be opened without a separate database server. The app reads `DATABASE_URL` (or the legacy `SQLALCHEMY_DATABASE_URI`) for database configuration. PostgreSQL and MySQL are also supported; MySQL URLs use the `mysql+pymysql://` dialect.
 
+To enable Google sign-in locally, create an OAuth 2.0 **Web application** client in Google Cloud Console. For a local server at `http://127.0.0.1:5000`, add `http://127.0.0.1:5000` as an Authorized JavaScript origin and `http://127.0.0.1:5000/auth/google/callback` as an Authorized redirect URI. Add the client ID and secret to `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`; keep the default Google discovery URL and set `GOOGLE_REDIRECT_URI` to that callback URL. Use a separate OAuth client for local development and production. Do not expose the client secret in frontend code.
+
 ```text
 postgresql+psycopg://stall_user:your-password@localhost:5432/food_stall
 ```
@@ -67,6 +69,8 @@ Inventory and product-performance downloads are landscape PDFs with red-and-whit
 ## Production notes
 
 - Set `FLASK_DEBUG=0`, a random `SECRET_KEY` of at least 32 characters, and `COOKIE_SECURE=1` when serving over HTTPS.
+- In Cloud Run, set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_DISCOVERY_URL=https://accounts.google.com/.well-known/openid-configuration`, and `GOOGLE_REDIRECT_URI=https://fest-stall-980361887314.europe-west1.run.app/auth/google/callback`. Configure the matching Google Cloud Console Authorized JavaScript origin as `https://fest-stall-980361887314.europe-west1.run.app` and Authorized redirect URI as `https://fest-stall-980361887314.europe-west1.run.app/auth/google/callback`. Store the client secret in Secret Manager and expose it to the Cloud Run revision as an environment variable. Keep `COOKIE_SECURE=1`.
+- After deploying Google sign-in, apply its additive user-table migration with `flask --app run.py db upgrade` (or run the same migration as a deployment step) before serving requests. Existing users and password hashes are preserved. New Google accounts remain inactive and require root approval, matching the existing registration policy.
 - Keep `.env` private. Never commit database credentials or production secrets.
 - Use the existing Flask-Migrate setup for schema changes: review generated revisions from `flask --app run.py db migrate`, then apply with `db upgrade`. `init-db` is for a new empty database only.
 - Run `flask --app run.py check-db` to verify the configured connection and compare all application tables and columns. The app loads `backend/.env` from the project directory even when launched from another working directory.

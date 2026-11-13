@@ -1,13 +1,13 @@
 {% extends 'base.html' %}{% block title %}Stall settings{% endblock %}{% block page_title %}Stall settings{% endblock %}{% block content %}
 <div class="page-heading"><div><p class="eyebrow">MAKE IT YOURS</p><h1>Stall settings</h1><p class="muted">Owner-only details used across the dashboard and printed receipts.</p></div></div>
-<form method="post" enctype="multipart/form-data" class="panel form-panel"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="form-grid">
-<label class="full-field">Stall name<input name="stall_name" maxlength="300" value="{{ values.stall_name }}" placeholder="Festival Bites"></label>
+<form method="post" class="panel form-panel"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div class="form-grid">
+<label class="full-field">Stall name<input name="stall_name" maxlength="300" value="{{ values.stall_name }}" placeholder="HeHeFoodies"></label>
 <label>Contact information<input name="contact_info" maxlength="300" value="{{ values.contact_info }}" placeholder="Phone or social handle"></label>
 <label>Currency display<input name="currency" maxlength="30" value="{{ values.currency or '৳' }}"><small>Defaults to ৳ for Bangladeshi taka.</small></label>
 <label>Festival opening date<input type="date" name="festival_open" value="{{ values.festival_open }}"></label>
 <label>Festival closing date<input type="date" name="festival_close" value="{{ values.festival_close }}"></label>
 <label>Default low-stock warning<input type="number" name="low_stock_threshold" min="0" max="100000" step="1" value="{{ values.low_stock_threshold or 5 }}"><small>Used when adding a new product.</small></label>
-<label class="full-field">Stall logo <small>Optional · JPEG, PNG, or WebP · maximum 4 MB</small>{% if values.logo_filename %}<span class="image-preview"><img src="{{ url_for('main.private_upload', filename=values.logo_filename) }}" alt="Current stall logo"></span>{% endif %}<input type="file" name="logo" accept="image/jpeg,image/png,image/webp"></label>
+<div class="full-field settings-brand-note"><b>Website logo</b><small>The Stall Desk logo is fixed across the website and cannot be changed from Settings.</small><img class="brand-wordmark settings-brand-preview" src="{{ url_for('static', filename='brand-logo.svg') }}" alt="Stall Desk logo"></div>
 <label class="full-field">Receipt footer<textarea name="receipt_footer" rows="3" placeholder="Thanks for supporting our stall!">{{ values.receipt_footer }}</textarea></label>
 </div><div class="form-actions"><button class="btn btn-primary">Save settings <span>→</span></button></div></form>
 {% endblock %}

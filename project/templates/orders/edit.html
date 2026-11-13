@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}Edit {{ order.order_number }}{% endblock %}
+{% block page_title %}Edit order{% endblock %}
+{% block content %}
+<div class="page-heading edit-order-heading">
+  <div><p class="eyebrow">PENDING ORDER</p><h1>Edit order</h1><p class="muted">{{ order.order_number }} - Update items or discount before handing this order over.</p></div>
+  <a class="btn btn-light" href="{{ url_for('sales.order_detail', order_id=order.id) }}">Back to order</a>
+</div>
+
+<form id="editOrderForm" method="post" class="edit-order-layout" data-currency="{{ currency_symbol }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="additions" id="additionsJson" value="[]">
+  <section class="edit-order-main">
+    <div class="panel edit-order-panel">
+      <div class="edit-panel-heading"><div><p class="eyebrow">CURRENT ITEMS</p><h2>Order items</h2></div><span>{{ order.items|length }} line{% if order.items|length != 1 %}s{% endif %}</span></div>
+      <div class="edit-order-lines">
+        {% for item in order.items %}
+        <div class="edit-order-line">
+          <div class="edit-line-product"><strong>{{ item.product_name }}</strong>{% if item.addons %}<small>Extras: {% for addon in item.addons %}{{ addon.ingredient_name }}{% if not loop.last %}, {% endif %}{% endfor %}</small>{% endif %}<span>{{ (item.unit_price + (item.addons|sum(attribute='unit_price')))|money }} each</span></div>
+          <label class="edit-quantity">Quantity<input type="number" name="quantity_{{ item.id }}" min="1" max="999" value="{{ item.quantity }}" required></label>
+          <label class="edit-remove"><input type="checkbox" name="remove_item_{{ item.id }}" value="1" data-remove-line><span>Remove</span></label>
+        </div>
+        {% else %}<p class="edit-empty-lines">No items are on this order yet. Add an item below.</p>{% endfor %}
+      </div>
+    </div>
+
+    <div class="panel edit-order-panel add-order-items-panel">
+      <div class="edit-panel-heading"><div><p class="eyebrow">ADD TO ORDER</p><h2>Choose another item</h2></div></div>
+      <div class="add-order-item-controls">
+        <label>Menu item<select id="newProductSelect"><option value="">Choose a product</option>{% for product in products %}<option value="{{ product.id }}" data-name="{{ product.name }}" data-price="{{ product.selling_price }}" data-stock="{{ product.stock }}" data-addons="{{ product_addons[product.id]|tojson|forceescape }}">{{ product.name }} - {{ product.selling_price|money }} - {{ product.stock }} in stock</option>{% endfor %}</select></label>
+        <label>Quantity<input id="newProductQuantity" type="number" min="1" max="999" value="1"></label>
+        <button class="btn btn-light" type="button" id="queueOrderItem" disabled>Add item</button>
+      </div>
+      <div id="editAddonChoices" class="edit-addon-choices" hidden></div>
+      <div class="queued-order-items" id="queuedOrderItems" hidden></div>
+      {% if not products %}<p class="muted edit-stock-note">There are no available in-stock products to add.</p>{% endif %}
+    </div>
+  </section>
+
+  <aside class="edit-order-sidebar">
+    <div class="panel edit-order-panel edit-order-summary">
+      <p class="eyebrow">PRICE ADJUSTMENT</p><h2>Discount</h2>
+      {% if current_user.role in ['ROOT','OWNER','MANAGER'] %}<label>Discount amount ({{ currency_symbol }})<input name="discount" type="number" min="0" step="0.01" value="{{ order.discount }}"></label><small class="edit-discount-help">Applied to the updated subtotal. The order total cannot fall below payments already recorded.</small>
+      {% else %}<div class="current-discount"><span>Current discount</span><strong>{{ order.discount|money }}</strong></div><small class="edit-discount-help">Ask an owner or manager to change the discount.</small>{% endif %}
+      <div class="edit-current-total"><span>Saved total</span><strong>{{ order.total|money }}</strong></div>
+      <p class="edit-order-error" id="editOrderError" aria-live="polite"></p>
+      <div class="edit-order-actions"><button class="btn btn-primary btn-wide" type="submit">Save changes</button><a class="btn btn-light btn-wide" href="{{ url_for('sales.order_detail', order_id=order.id) }}">Cancel</a></div>
+      <p class="edit-stock-note">The new total is recalculated when saved. Stock adjusts automatically, and edits are available only while Pending.</p>
+    </div>
+  </aside>
+</form>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/order-edit.js') }}" defer></script>{% endblock %}

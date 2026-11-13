@@ -360,20 +360,13 @@
     activeCategory = chip.dataset.category; document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c === chip)); filterProducts();
   }));
   checkoutForm.addEventListener('submit', (event) => {
-    const {total} = totals();
-    const payments = [...paymentRows.querySelectorAll('.payment-input-row')].map((row) => ({
-      method: row.querySelector('select').value,
-      amount: Number(row.querySelector('.payment-amount').value) || 0,
-      reference: row.querySelector('.payment-reference').value.trim()
-    })).filter((row) => row.amount > 0);
-    const paymentTotal = payments.reduce((sum, row) => sum + row.amount, 0);
-    if (!cart.size || paymentTotal > total + 0.001) { event.preventDefault(); return; }
+    if (!cart.size) { event.preventDefault(); return; }
     document.getElementById('cartJson').value = JSON.stringify([...cart.values()].map((item) => ({
       id:item.productId,
       quantity:item.quantity,
       addons:item.addons.map((addon) => addon.id)
     })));
-    document.getElementById('paymentsJson').value = JSON.stringify(payments);
+    document.getElementById('paymentsJson').value = '[]';
     document.getElementById('checkoutButton').disabled = true;
     document.getElementById('checkoutButton').textContent = 'Saving order…';
   });

@@ -18,17 +18,17 @@
 </div>
 <div class="stat-grid stat-grid-three expense-overview-stats">
   <article class="stat-card">
-    <div class="stat-top"><span>Total committed</span><span class="stat-icon">∑</span></div>
+    <div class="stat-top"><span>Total committed</span><span class="stat-icon">{{ icon('wallet') }}</span></div>
     <strong>{{ committed_expense_total|money }}</strong>
     <small>Full value of all expense records</small>
   </article>
   <article class="stat-card">
-    <div class="stat-top"><span>Charged to profit</span><span class="stat-icon yellow-icon">−</span></div>
+    <div class="stat-top"><span>Charged to profit</span><span class="stat-icon yellow-icon">{{ icon('currency') }}</span></div>
     <strong>{{ expense_recognized_total|money }}</strong>
     <small>Recognized through today</small>
   </article>
   <article class="stat-card">
-    <div class="stat-top"><span>Still scheduled</span><span class="stat-icon mint-icon">◷</span></div>
+    <div class="stat-top"><span>Still scheduled</span><span class="stat-icon mint-icon">{{ icon('receipt') }}</span></div>
     <strong>{{ expense_remaining_total|money }}</strong>
     <small>Future deductions not yet recognized</small>
   </article>

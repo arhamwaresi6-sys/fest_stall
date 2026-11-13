@@ -4,7 +4,9 @@ from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
+from unittest.mock import Mock, patch
 
+from authlib.integrations.base_client.errors import OAuthError
 from PIL import Image
 from sqlalchemy import inspect
 from werkzeug.datastructures import FileStorage
@@ -57,6 +59,200 @@ class TestConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     WTF_CSRF_ENABLED = False
     SESSION_COOKIE_SECURE = False
+
+
+class GoogleOAuthTestConfig(TestConfig):
+    GOOGLE_CLIENT_ID = "test-google-client-id"
+    GOOGLE_CLIENT_SECRET = "test-google-client-secret"
+    GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
+    GOOGLE_REDIRECT_URI = (
+        "https://fest-stall-980361887314.europe-west1.run.app/auth/google/callback"
+    )
+
+
+class GoogleOAuthTests(unittest.TestCase):
+    def setUp(self):
+        self.app = create_app(GoogleOAuthTestConfig)
+        self.context = self.app.app_context()
+        self.context.push()
+        db.create_all()
+        self.client = self.app.test_client()
+        self.google = self.app.extensions["google_oauth"].create_client("google")
+
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.context.pop()
+
+    def sign_in_with(self, claims):
+        with patch.object(
+            self.google,
+            "authorize_access_token",
+            return_value={"userinfo": claims},
+        ):
+            return self.client.get("/auth/google/callback?state=test-state")
+
+    def test_auth_pages_show_google_buttons_and_use_configured_pkce_callback(self):
+        self.assertIn(b"Continue with Google", self.client.get("/auth/login").data)
+        self.assertIn(b"Continue with Google", self.client.get("/auth/register").data)
+
+        fake_google = Mock()
+        fake_google.authorize_redirect.return_value = ("", 302)
+        with patch.object(
+            self.app.extensions["google_oauth"],
+            "create_client",
+            return_value=fake_google,
+        ):
+            response = self.client.get("/auth/google")
+
+        self.assertEqual(response.status_code, 302)
+        fake_google.authorize_redirect.assert_called_once_with(
+            "https://fest-stall-980361887314.europe-west1.run.app/auth/google/callback",
+            code_challenge_method="S256",
+        )
+
+    def test_google_registration_creates_pending_user_with_verified_profile(self):
+        response = self.sign_in_with(
+            {
+                "sub": "google-user-1",
+                "email": "new.person@example.test",
+                "email_verified": True,
+                "name": "New Person",
+                "picture": "https://example.test/profile.jpg",
+            }
+        )
+
+        user = db.session.scalar(
+            db.select(User).where(User.email == "new.person@example.test")
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(user.role, "PENDING")
+        self.assertFalse(user.active)
+        self.assertEqual(user.google_sub, "google-user-1")
+        self.assertEqual(user.full_name, "New Person")
+        self.assertEqual(user.google_picture_url, "https://example.test/profile.jpg")
+        self.assertIn(b"awaiting root approval", self.client.get("/auth/login").data)
+
+        self.sign_in_with(
+            {
+                "sub": "google-user-short-name",
+                "email": "ab@example.test",
+                "email_verified": True,
+            }
+        )
+        short_name_user = db.session.scalar(
+            db.select(User).where(User.email == "ab@example.test")
+        )
+        self.assertEqual(short_name_user.username, "g.ab")
+
+    def test_google_verified_email_links_existing_user_without_changing_password(self):
+        user = User(
+            username="existing.user",
+            email="existing@example.test",
+            full_name="Existing User",
+            role="ROOT",
+            active=True,
+        )
+        user.set_password("existing-password-123")
+        original_password_hash = user.password_hash
+        db.session.add(user)
+        db.session.commit()
+
+        response = self.sign_in_with(
+            {
+                "sub": "google-existing-user",
+                "email": "EXISTING@example.test",
+                "email_verified": True,
+                "name": "Google Name",
+            }
+        )
+
+        db.session.refresh(user)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(user.google_sub, "google-existing-user")
+        self.assertEqual(user.password_hash, original_password_hash)
+        self.assertEqual(user.full_name, "Existing User")
+        self.assertEqual(self.client.get("/dashboard").status_code, 200)
+
+    def test_google_email_collision_with_another_identity_is_rejected(self):
+        user = User(
+            username="linked.user",
+            email="linked@example.test",
+            full_name="Linked User",
+            role="ROOT",
+            active=True,
+            google_sub="different-google-user",
+        )
+        user.set_password("existing-password-123")
+        db.session.add(user)
+        db.session.commit()
+
+        response = self.sign_in_with(
+            {
+                "sub": "new-google-user",
+                "email": "linked@example.test",
+                "email_verified": True,
+                "name": "Other Person",
+            }
+        )
+
+        db.session.refresh(user)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(user.google_sub, "different-google-user")
+        self.assertIn(
+            b"already linked to a different Google account",
+            self.client.get("/auth/login").data,
+        )
+
+    def test_cancelled_and_invalid_google_responses_show_errors(self):
+        invalid_state = self.client.get(
+            "/auth/google/callback?code=not-used&state=not-issued"
+        )
+        self.assertEqual(invalid_state.status_code, 302)
+        self.assertIn(
+            b"could not be verified", self.client.get("/auth/login").data
+        )
+
+        with patch.object(
+            self.google,
+            "authorize_access_token",
+            side_effect=OAuthError(error="access_denied"),
+        ):
+            cancelled = self.client.get(
+                "/auth/google/callback?error=access_denied&state=test-state"
+            )
+        self.assertEqual(cancelled.status_code, 302)
+        self.assertIn(
+            b"Google sign-in was cancelled", self.client.get("/auth/login").data
+        )
+
+        response = self.sign_in_with(
+            {
+                "sub": "unverified-user",
+                "email": "unverified@example.test",
+                "email_verified": False,
+            }
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(
+            db.session.scalar(
+                db.select(User).where(User.email == "unverified@example.test")
+            )
+        )
+        self.assertIn(
+            b"verified email address", self.client.get("/auth/login").data
+        )
+
+        with patch.object(
+            self.google,
+            "authorize_access_token",
+            return_value={"access_token": "untrusted"},
+        ):
+            malformed = self.client.get("/auth/google/callback?state=test-state")
+        self.assertEqual(malformed.status_code, 302)
+        self.assertIn(
+            b"invalid sign-in response", self.client.get("/auth/login").data
+        )
 
 
 class WebsiteWorkflowTests(unittest.TestCase):
