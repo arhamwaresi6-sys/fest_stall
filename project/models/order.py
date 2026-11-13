@@ -8,6 +8,7 @@ class Order(db.Model):
     checkout_token = db.Column(db.String(64), unique=True, index=True)
     status = db.Column(db.String(20), nullable=False, default="Pending", index=True)
     payment_status = db.Column(db.String(20), nullable=False, default="Unpaid", index=True)
+    payment_method = db.Column(db.String(20), nullable=False, default="hand", server_default="hand")
     subtotal = db.Column(db.Numeric(12, 2), nullable=False)
     discount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     total = db.Column(db.Numeric(12, 2), nullable=False)
@@ -27,8 +28,11 @@ class Order(db.Model):
     accepted_by = db.relationship("User", foreign_keys=[accepted_by_id], backref="accepted_orders")
     items = db.relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     payments = db.relationship("Payment", back_populates="order", cascade="all, delete-orphan")
-    __table_args__ = (db.CheckConstraint("status IN ('Pending', 'Completed', 'Cancelled', 'Refunded')", name="ck_order_status_allowed"),
-                      db.CheckConstraint("payment_status IN ('Paid', 'Partially paid', 'Unpaid', 'Refunded')", name="ck_order_payment_status_allowed"))
+    __table_args__ = (
+        db.CheckConstraint("status IN ('Pending', 'Completed', 'Cancelled', 'Refunded')", name="ck_order_status_allowed"),
+        db.CheckConstraint("payment_status IN ('Paid', 'Partially paid', 'Unpaid', 'Refunded')", name="ck_order_payment_status_allowed"),
+        db.CheckConstraint("payment_method IN ('hand', 'bkash')", name="ck_order_payment_method_allowed"),
+    )
 
 
 class OrderItem(db.Model):

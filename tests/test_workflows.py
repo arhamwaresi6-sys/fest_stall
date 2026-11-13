@@ -22,6 +22,7 @@ from project.models import (
     IngredientTransaction,
     InventoryTransaction,
     Order,
+    OrderItem,
     OrderItemAddon,
     Payment,
     Product,
@@ -359,6 +360,133 @@ class WebsiteWorkflowTests(unittest.TestCase):
         self.assertEqual(self.client.get("/inventory/export.csv").status_code, 404)
         self.assertEqual(self.client.get("/reports/products.csv").status_code, 404)
 
+    def test_orders_page_summarizes_all_pending_product_quantities(self):
+        root = db.session.scalar(db.select(User).where(User.username == "root"))
+        first_pending = Order(
+            order_number="KITCHEN-PENDING-1",
+            subtotal=Decimal("4.00"),
+            discount=Decimal("0.00"),
+            total=Decimal("4.00"),
+            created_by=root,
+            accepted_by=root,
+        )
+        second_pending = Order(
+            order_number="KITCHEN-PENDING-2",
+            subtotal=Decimal("6.00"),
+            discount=Decimal("0.00"),
+            total=Decimal("6.00"),
+            created_by=root,
+            accepted_by=root,
+        )
+        completed = Order(
+            order_number="KITCHEN-COMPLETED",
+            status="Completed",
+            subtotal=Decimal("8.00"),
+            discount=Decimal("0.00"),
+            total=Decimal("8.00"),
+            created_by=root,
+            accepted_by=root,
+        )
+        db.session.add_all([first_pending, second_pending, completed])
+        db.session.flush()
+        db.session.add_all(
+            [
+                OrderItem(
+                    order=first_pending,
+                    product_id=self.product_id,
+                    product_name="Test snack",
+                    unit_price=Decimal("2.00"),
+                    unit_cost=Decimal("1.00"),
+                    quantity=2,
+                    line_total=Decimal("4.00"),
+                ),
+                OrderItem(
+                    order=second_pending,
+                    product_id=self.product_id,
+                    product_name="Test snack",
+                    unit_price=Decimal("2.00"),
+                    unit_cost=Decimal("1.00"),
+                    quantity=3,
+                    line_total=Decimal("6.00"),
+                ),
+                OrderItem(
+                    order=completed,
+                    product_name="Already cooked",
+                    unit_price=Decimal("2.00"),
+                    unit_cost=Decimal("1.00"),
+                    quantity=4,
+                    line_total=Decimal("8.00"),
+                ),
+            ]
+        )
+        db.session.commit()
+
+        response = self.client.get("/orders?status=Cancelled")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Products to prepare", response.data)
+        self.assertIn(b"Test snack", response.data)
+        self.assertIn(b"<strong>5</strong><small>to cook</small>", response.data)
+        self.assertNotIn(b"Already cooked", response.data)
+
+    def test_checkout_saves_payment_method_and_marks_paid_once_from_orders(self):
+        cashier = db.session.scalar(
+            db.select(User).where(User.username == "cashier")
+        )
+        checkout = {
+            "checkout_token": "workflow-preferred-payment",
+            "accepted_by_id": str(cashier.id),
+            "cart": json.dumps([{"id": self.product_id, "quantity": 2}]),
+            "payment_method": "bkash",
+            "payments": json.dumps([{"method": "hand", "amount": "4.00"}]),
+        }
+        response = self.client.post("/pos", data=checkout)
+        self.assertEqual(response.status_code, 302)
+
+        order = db.session.scalar(
+            db.select(Order).where(
+                Order.checkout_token == "workflow-preferred-payment"
+            )
+        )
+        self.assertEqual(order.payment_method, "bkash")
+        self.assertEqual(order.payment_status, "Unpaid")
+        self.assertEqual(
+            db.session.scalars(
+                db.select(Payment).where(Payment.order_id == order.id)
+            ).all(),
+            [],
+        )
+
+        detail_page = self.client.get(f"/orders/{order.id}").data
+        self.assertIn(b"Payment method", detail_page)
+        self.assertNotIn(b"Record payment", detail_page)
+
+        orders_page = self.client.get("/orders").data
+        self.assertIn(b"Mark paid", orders_page)
+        self.assertIn(b"bKash", orders_page)
+        self.assertNotIn(b"Record payment", orders_page)
+
+        response = self.client.post(f"/orders/{order.id}/mark-paid")
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(order)
+        payments = db.session.scalars(
+            db.select(Payment).where(Payment.order_id == order.id)
+        ).all()
+        self.assertEqual(order.payment_status, "Paid")
+        self.assertEqual(len(payments), 1)
+        self.assertEqual(payments[0].method, "bkash")
+        self.assertEqual(payments[0].amount, order.total)
+
+        self.client.post(f"/orders/{order.id}/mark-paid")
+        self.assertEqual(
+            len(
+                db.session.scalars(
+                    db.select(Payment).where(Payment.order_id == order.id)
+                ).all()
+            ),
+            1,
+        )
+
     def test_registration_requires_root_approval(self):
         self.client.post("/auth/logout")
         registration = {
@@ -438,7 +566,7 @@ class WebsiteWorkflowTests(unittest.TestCase):
                 db.session.scalar(db.select(User).where(User.username == "cashier")).id
             ),
             "cart": json.dumps([{"id": self.product_id, "quantity": 2}]),
-            "payments": json.dumps([{"method": "hand", "amount": "3.00"}]),
+            "payment_method": "hand",
             "discount": "25",
             "discount_kind": "percent",
         }
@@ -503,7 +631,7 @@ class WebsiteWorkflowTests(unittest.TestCase):
             "checkout_token": "workflow-coupon-1",
             "accepted_by_id": str(cashier.id),
             "cart": json.dumps([{"id": self.product_id, "quantity": 2}]),
-            "payments": json.dumps([{"method": "hand", "amount": "2.00"}]),
+            "payment_method": "hand",
             "discount": "25",
             "discount_kind": "percent",
             "coupon_code": "save25",
@@ -578,10 +706,21 @@ class WebsiteWorkflowTests(unittest.TestCase):
                 data={
                     "checkout_token": token,
                     "cart": json.dumps([{"id": product_id, "quantity": 1}]),
-                    "payments": "[]",
+                    "payment_method": "hand",
                 },
             )
             self.assertEqual(response.status_code, 302)
+            order = db.session.scalar(
+                db.select(Order).where(Order.checkout_token == token)
+            )
+            self.assertEqual(
+                self.client.post(f"/orders/{order.id}/mark-paid").status_code,
+                302,
+            )
+            self.assertEqual(
+                self.client.post(f"/orders/{order.id}/complete").status_code,
+                302,
+            )
 
         today = date.today().isoformat()
         dashboard = self.client.get(f"/dashboard?start={today}&end={today}")
@@ -851,7 +990,7 @@ class WebsiteWorkflowTests(unittest.TestCase):
             data={
                 "checkout_token": "workflow-delete-order",
                 "cart": json.dumps([{"id": self.product_id, "quantity": 2}]),
-                "payments": json.dumps([{"method": "hand", "amount": "1.00"}]),
+                "payment_method": "hand",
                 "discount": "0",
                 "discount_kind": "amount",
             },
@@ -934,7 +1073,7 @@ class WebsiteWorkflowTests(unittest.TestCase):
                         },
                     ]
                 ),
-                "payments": json.dumps([{"method": "hand", "amount": "8.00"}]),
+                "payment_method": "hand",
                 "discount": "0",
                 "discount_kind": "amount",
             },
@@ -1054,7 +1193,7 @@ class WebsiteWorkflowTests(unittest.TestCase):
                 db.session.scalar(db.select(User).where(User.username == "root")).id
             ),
             "cart": json.dumps([{"id": self.product_id, "quantity": 1}]),
-            "payments": json.dumps([{"method": "hand", "amount": "1.00"}]),
+            "payment_method": "hand",
             "discount": "0",
             "discount_kind": "amount",
         }
@@ -1063,7 +1202,7 @@ class WebsiteWorkflowTests(unittest.TestCase):
         order = db.session.scalar(
             db.select(Order).where(Order.checkout_token == "workflow-checkout-1")
         )
-        self.assertEqual(order.payment_status, "Partially paid")
+        self.assertEqual(order.payment_status, "Unpaid")
         self.assertEqual(self.client.get(f"/orders/{order.id}").status_code, 200)
         self.assertEqual(
             self.client.post(
@@ -1073,7 +1212,19 @@ class WebsiteWorkflowTests(unittest.TestCase):
             302,
         )
         db.session.refresh(order)
+        self.assertEqual(order.payment_status, "Partially paid")
+        self.assertEqual(
+            self.client.post(f"/orders/{order.id}/mark-paid").status_code,
+            302,
+        )
+        db.session.refresh(order)
         self.assertEqual(order.payment_status, "Paid")
+        self.assertEqual(
+            self.client.post(f"/orders/{order.id}/complete").status_code,
+            302,
+        )
+        db.session.refresh(order)
+        self.assertEqual(order.status, "Completed")
         self.assertEqual(
             self.client.post(
                 f"/orders/{order.id}/refund", data={"reason": "Customer returned item"}
@@ -1083,10 +1234,7 @@ class WebsiteWorkflowTests(unittest.TestCase):
         db.session.refresh(order)
         self.assertEqual(order.status, "Refunded")
 
-        checkout.update(
-            checkout_token="workflow-checkout-2",
-            payments="[]",
-        )
+        checkout.update(checkout_token="workflow-checkout-2")
         self.assertEqual(self.client.post("/pos", data=checkout).status_code, 302)
         order = db.session.scalar(
             db.select(Order).where(Order.checkout_token == "workflow-checkout-2")

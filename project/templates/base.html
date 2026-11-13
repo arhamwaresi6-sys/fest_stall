@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='brand-mascot.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css', v='9') }}">
   {% block head %}{% endblock %}
 </head>
 <body data-currency="{{ currency_symbol|default('৳') }}">
@@ -56,5 +56,5 @@
 {% else %}
 <main class="auth-page">{% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="flash-stack auth-flashes">{% for category, message in messages %}<div class="flash flash-{{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}{% endwith %}{% block auth_content %}{% endblock %}</main>
 {% endif %}
-<script src="{{ url_for('static', filename='js/app.js') }}" defer></script>{% block scripts %}{% endblock %}
+<script src="{{ url_for('static', filename='js/app.js', v='6') }}" defer></script>{% block scripts %}{% endblock %}
 </body></html>

@@ -106,6 +106,9 @@ def pos():
             )
             if accepted_by is None:
                 raise ValueError("Choose an active user who can accept orders.")
+            payment_method = request.form.get("payment_method", "hand")
+            if payment_method not in PAYMENT_METHODS:
+                raise ValueError("Choose By hand (cash) or bKash as the payment method.")
             customer_name = request.form.get("customer_name", "").strip()
             customer_phone = request.form.get("customer_phone", "").strip()
             if len(customer_name) > 120:
@@ -238,6 +241,7 @@ def pos():
             order = Order(order_number=f"FS-{datetime.now(timezone.utc):%y%m%d}-{uuid4().hex[:6].upper()}",
                           checkout_token=checkout_token,
                           status="Pending",
+                          payment_method=payment_method,
                           subtotal=subtotal, discount=discount + coupon_discount, total=total,
                           customer_name=customer_name or None,
                           customer_phone=customer_phone or None,
@@ -465,11 +469,22 @@ def orders():
     pending_count = db.session.scalar(
         select(func.count(Order.id)).where(Order.status == "Pending")
     ) or 0
+    pending_product_totals = db.session.execute(
+        select(
+            OrderItem.product_name,
+            func.sum(OrderItem.quantity).label("quantity"),
+        )
+        .join(Order, Order.id == OrderItem.order_id)
+        .where(Order.status == "Pending")
+        .group_by(OrderItem.product_name)
+        .order_by(OrderItem.product_name.asc())
+    ).all()
     if method in PAYMENT_METHODS:
         found = [o for o in found if any(p.method == method and p.status == "Recorded" for p in o.payments)]
-    return render_template("orders/index.html", orders=found, q=query, selected_method=method, selected_status=status,
+    return render_template("orders/index_kitchen.html", orders=found, q=query, selected_method=method, selected_status=status,
                            selected_payment_status=payment_status, date_from=date_from, date_to=date_to,
-                           payment_methods=PAYMENT_METHODS, pending_count=pending_count)
+                           payment_methods=PAYMENT_METHODS, pending_count=pending_count,
+                           pending_product_totals=pending_product_totals)
 
 
 @bp.get("/orders/<int:order_id>")
@@ -491,7 +506,7 @@ def order_detail(order_id):
         abort(404)
     received = sum((p.amount for p in order.payments if p.status == "Recorded"), Decimal("0.00"))
     remaining = max(Decimal("0.00"), order.total - received)
-    return render_template("orders/detail.html", order=order, received=received, remaining=remaining,
+    return render_template("orders/detail_one_click.html", order=order, received=received, remaining=remaining,
                            payment_methods=PAYMENT_METHODS, payment_names=PAYMENT_METHODS)
 
 
@@ -830,6 +845,62 @@ def complete_order(order_id):
     audit("Completed order", "Order", order.id, order.order_number)
     db.session.commit()
     flash(f"Order {order.order_number} marked complete.", "success")
+    return redirect(url_for("sales.orders"))
+
+
+@bp.post("/orders/<int:order_id>/mark-paid")
+@login_required
+@role_required("OWNER", "MANAGER", "CASHIER")
+def mark_order_paid(order_id):
+    order = db.session.scalar(
+        select(Order)
+        .options(selectinload(Order.payments))
+        .where(Order.id == order_id)
+        .with_for_update()
+    )
+    if order is None:
+        from flask import abort
+        abort(404)
+    try:
+        if order.status not in {"Pending", "Completed"}:
+            raise ValueError("Only pending or completed orders can be marked paid.")
+        if order.payment_method not in PAYMENT_METHODS:
+            raise ValueError("This order does not have a valid saved payment method.")
+        received = sum(
+            (payment.amount for payment in order.payments if payment.status == "Recorded"),
+            Decimal("0.00"),
+        )
+        remaining = order.total - received
+        if remaining <= 0:
+            raise ValueError("This order has no outstanding balance.")
+        order.payments.append(
+            Payment(
+                amount=remaining,
+                method=order.payment_method,
+                status="Recorded",
+                recorded_by_id=current_user.id,
+            )
+        )
+        db.session.flush()
+        refresh_order_payment_status(order)
+        audit(
+            "Marked order paid",
+            "Order",
+            order.id,
+            f"{order.order_number}: {PAYMENT_METHODS[order.payment_method]}",
+        )
+        db.session.commit()
+        flash(
+            f"Order {order.order_number} marked paid by {PAYMENT_METHODS[order.payment_method]}.",
+            "success",
+        )
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "danger")
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Database error while marking an order paid.")
+        flash("The order could not be marked paid because of a database error.", "danger")
     return redirect(url_for("sales.orders"))
 
 

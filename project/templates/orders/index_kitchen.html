@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% from "macros/icons.html" import icon %}
+{% block title %}Orders{% endblock %}
+{% block page_title %}Orders{% endblock %}
+{% block content %}
+<div class="orders-page">
+  <div class="page-heading orders-page-heading">
+    <div><p class="eyebrow">ORDER MANAGEMENT</p><h1>Orders</h1><p class="muted">See who each order is for, then mark it complete when it is handed over.</p></div>
+    <a class="btn btn-primary" href="{{ url_for('sales.pos') }}">+ New order</a>
+  </div>
+
+  <section class="orders-queue-summary" aria-label="Pending orders">
+    <span class="orders-queue-icon">{{ icon('receipt') }}</span>
+    <div class="orders-queue-copy"><span>READY TO HAND OVER</span><strong>{{ pending_count }}</strong><small>pending order{% if pending_count != 1 %}s{% endif %}</small></div>
+    <p>Keep this list open while serving. Mark an order complete once it has been given to the client.</p>
+    <a href="{{ url_for('sales.orders', status='Pending') }}">View pending orders <span aria-hidden="true">→</span></a>
+  </section>
+
+  <section class="kitchen-queue" aria-labelledby="kitchenQueueTitle">
+    <div class="kitchen-queue-heading">
+      <div>
+        <p class="eyebrow">FOR THE COOK</p>
+        <h2 id="kitchenQueueTitle">Products to prepare</h2>
+        <p>Combined quantities across all pending orders.</p>
+      </div>
+      <span class="kitchen-queue-count">{{ pending_product_totals|length }} product{% if pending_product_totals|length != 1 %}s{% endif %}</span>
+    </div>
+    {% if pending_product_totals %}
+    <ul class="kitchen-queue-list">
+      {% for item in pending_product_totals %}
+      <li class="kitchen-queue-item">
+        <span class="kitchen-queue-name">{{ item.product_name }}</span>
+        <span class="kitchen-queue-quantity"><strong>{{ item.quantity }}</strong><small>to cook</small></span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="kitchen-queue-empty">No pending products to prepare right now.</p>
+    {% endif %}
+  </section>
+
+  <form method="get" class="filter-bar orders-filter-bar">
+    <input class="search-input" name="q" placeholder="Search order, client or phone" value="{{ q }}">
+    <label>Payment method<select name="method"><option value="">All methods</option>{% for key, label in payment_methods.items() %}<option value="{{ key }}" {% if selected_method == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Payment status<select name="payment_status"><option value="">All payment states</option>{% for s in ['Paid','Partially paid','Unpaid','Refunded'] %}<option {% if selected_payment_status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+    <label>Order status<select name="status"><option value="">All statuses</option>{% for s in ['Pending','Completed','Cancelled','Refunded'] %}<option {% if selected_status == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+    <label>From<input type="date" name="date_from" value="{{ date_from or '' }}"></label>
+    <label>To<input type="date" name="date_to" value="{{ date_to or '' }}"></label>
+    <button class="btn btn-dark">Filter</button>
+  </form>
+
+  <nav class="orders-status-tabs" aria-label="Quick order filters">
+    <a class="order-status-tab {% if not selected_status %}is-active{% endif %}" href="{{ url_for('sales.orders') }}">All orders</a>
+    <a class="order-status-tab {% if selected_status == 'Pending' %}is-active{% endif %}" href="{{ url_for('sales.orders', status='Pending') }}">Pending <span>{{ pending_count }}</span></a>
+    {% for s in ['Completed','Cancelled','Refunded'] %}<a class="order-status-tab {% if selected_status == s %}is-active{% endif %}" href="{{ url_for('sales.orders', status=s) }}">{{ s }}</a>{% endfor %}
+  </nav>
+
+  <div class="orders-list-heading"><div><h2>{% if selected_status %}{{ selected_status }} orders{% else %}Recent orders{% endif %}</h2><p>{{ orders|length }} shown · pending orders are listed first</p></div></div>
+  {% if orders %}
+  <div class="orders-list">
+    {% for order in orders %}
+    <article class="order-card {% if order.status == 'Pending' %}order-card-pending{% endif %}">
+      <div class="order-card-top">
+        <div class="order-card-reference"><span class="order-card-icon">{{ icon('receipt') }}</span><div><a href="{{ url_for('sales.order_detail', order_id=order.id) }}">{{ order.order_number }}</a><small>{{ order.created_at|dhaka }}</small></div></div>
+        <span class="badge badge-{{ order.status|lower }}">{{ order.status }}</span>
+      </div>
+      <div class="order-card-main">
+        <div class="order-client-block"><span class="order-field-label">CLIENT</span><strong>{{ order.customer_name or 'Walk-in customer' }}</strong>{% if order.customer_phone %}<a class="order-phone" href="tel:{{ order.customer_phone }}">{{ icon('phone') }} {{ order.customer_phone }}</a>{% else %}<span class="order-phone order-phone-missing">Phone not provided</span>{% endif %}</div>
+        <div class="order-items-block"><span class="order-field-label">ORDER ITEMS</span><div>{% for item in order.items[:3] %}<span>{{ item.quantity }} × {{ item.product_name }}</span>{% endfor %}{% if order.items|length > 3 %}<small>+ {{ order.items|length - 3 }} more item{% if order.items|length - 3 != 1 %}s{% endif %}</small>{% endif %}</div></div>
+      </div>
+      <div class="order-card-bottom">
+        <div class="order-card-meta"><div><span class="order-field-label">PAYMENT</span><b>{{ order.payment_status }}</b></div><div><span class="order-field-label">ACCEPTED BY</span><b>{{ order.accepted_by.full_name }}</b></div><div class="order-card-total"><span class="order-field-label">TOTAL</span><strong>{{ order.total|money }}</strong></div></div>
+        <div class="order-card-actions">
+          <a class="btn btn-light btn-small" href="{{ url_for('sales.order_detail', order_id=order.id) }}">View details</a>
+          {% if order.status == 'Pending' %}<a class="btn btn-light btn-small" href="{{ url_for('sales.edit_order', order_id=order.id) }}">Edit order</a>{% endif %}
+          {% if order.status in ['Pending', 'Completed'] and order.payment_status in ['Unpaid', 'Partially paid'] and order.total > 0 and order.payment_method in payment_methods %}<form method="post" action="{{ url_for('sales.mark_order_paid', order_id=order.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary btn-small" type="submit">Mark paid · {{ payment_methods[order.payment_method] }}</button></form>{% endif %}
+          {% if order.status == 'Pending' %}<form method="post" action="{{ url_for('sales.complete_order', order_id=order.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary btn-small" type="submit">Mark complete</button></form>{% endif %}
+          {% if current_user.role in ['ROOT','OWNER','MANAGER'] %}<form method="post" action="{{ url_for('sales.delete_order', order_id=order.id) }}" data-confirm="Permanently delete order {{ order.order_number }} and its payment/history records?{% if order.status in ['Pending','Completed'] %} Product and ingredient stock will be restored.{% endif %}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="link-button danger-text" type="submit">Delete</button></form>{% endif %}
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}<div class="panel empty-state orders-empty-state"><span class="empty-icon">{{ icon('receipt') }}</span><h3>No matching orders</h3><p>Try another filter or start a new order.</p><a class="btn btn-primary" href="{{ url_for('sales.pos') }}">Create an order</a></div>{% endif %}
+</div>
+{% endblock %}

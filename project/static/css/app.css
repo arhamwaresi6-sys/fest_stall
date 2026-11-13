@@ -74,6 +74,18 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
+.wave {
+  display: inline-block;
+  color: var(--red);
+  font-size: 22px;
+  vertical-align: top;
+  margin-left: 2px;
+}
+
 html {
   min-width: 320px;
   min-height: 100%;
@@ -414,7 +426,7 @@ button {
 
 /* Sidebar Backdrop (Mobile) */
 .sidebar-backdrop {
-  display: block;
+  display: none;
   position: fixed;
   inset: 0;
   z-index: 25;
@@ -425,6 +437,10 @@ button {
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--transition-fast);
+}
+
+.orders-page {
+  min-width: 0;
 }
 
 .sidebar-backdrop.open {
@@ -776,7 +792,7 @@ button {
   border-color: #a7f3d0;
 }
 
-.flash-danger {
+.flash-danger, .flash-error {
   background: #fef2f2;
   color: #b91c1c;
   border-color: #fecaca;
@@ -786,6 +802,12 @@ button {
   background: #fffbeb;
   color: #b45309;
   border-color: #fde68a;
+}
+
+.flash-info {
+  background: #f0f9ff;
+  color: #0369a1;
+  border-color: #bae6fd;
 }
 
 /* --------------------------------------------------------------------------
@@ -960,7 +982,7 @@ input[type=file]:hover::file-selector-button {
 }
 
 .custom-select.is-open {
-  z-index: 25;
+  z-index: 40;
 }
 
 .custom-select-native {
@@ -973,12 +995,12 @@ input[type=file]:hover::file-selector-button {
   clip: rect(0, 0, 0, 0) !important;
   white-space: nowrap !important;
   border: 0 !important;
+  pointer-events: none !important;
 }
 
 .custom-select-trigger {
   position: relative;
-  display: flex;
-  align-items: center;
+  display: block;
   width: 100%;
   min-width: 0;
   min-height: 44px;
@@ -991,6 +1013,9 @@ input[type=file]:hover::file-selector-button {
   text-align: left;
   font-size: 13.5px;
   font-weight: 600;
+  line-height: 24px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   cursor: pointer;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
@@ -1005,6 +1030,7 @@ input[type=file]:hover::file-selector-button {
   content: "";
   transform: translateY(-2px) rotate(45deg);
   transition: transform 0.2s var(--ease-spring);
+  pointer-events: none;
 }
 
 .custom-select-trigger:hover {
@@ -1026,18 +1052,45 @@ input[type=file]:hover::file-selector-button {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  z-index: 30;
-  display: grid;
+  z-index: 80;
+  display: none;
   gap: 4px;
-  max-height: 250px;
+  max-height: 320px;
   padding: 7px;
+  overflow-x: hidden;
   overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--white);
   box-shadow: var(--shadow-lg);
   transform-origin: top center;
+  overscroll-behavior: contain;
+}
+
+.custom-select.is-open > .custom-select-menu,
+.input-suggestions.is-open > .input-suggestions-menu,
+.custom-select-menu.is-open-menu,
+.input-suggestions-menu.is-open-menu {
+  display: grid;
   animation: dropdown-pop 0.18s var(--ease-spring) both;
+}
+
+.custom-select-menu.is-fixed,
+.input-suggestions-menu.is-fixed {
+  right: auto;
+}
+
+.field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.field-block > label {
+  display: block;
+  font-weight: 700;
+  font-size: 13px;
+  color: #334155;
 }
 
 @keyframes dropdown-pop {
@@ -1099,7 +1152,13 @@ input[type=file]:hover::file-selector-button {
   min-width: 0;
 }
 .input-suggestions.is-open {
-  z-index: 25;
+  z-index: 40;
+}
+
+.filter-bar .custom-select-trigger {
+  min-height: 42px;
+  padding: 9px 38px 9px 13px;
+  font-size: 13.5px;
 }
 
 /* Forms layout */
@@ -1602,10 +1661,6 @@ tbody tr:last-child td {
   transform: translateY(0) scale(0.98);
 }
 
-.pos-product[hidden] {
-  display: none;
-}
-
 .pos-product .food-photo, .pos-product .food-icon {
   width: 52px;
   height: 52px;
@@ -1671,6 +1726,7 @@ tbody tr:last-child td {
   padding: 24px;
   max-height: calc(100vh - 108px);
   max-height: calc(100dvh - 108px);
+  overflow-x: hidden;
   overflow-y: auto;
 }
 
@@ -1905,14 +1961,38 @@ tbody tr:last-child td {
 
 .discount-controls {
   display: flex;
+  align-items: center;
   gap: 7px;
 }
 
+.discount-controls select,
+.discount-controls .custom-select {
+  width: 68px;
+  flex: 0 0 68px;
+  min-width: 68px;
+}
+
 .discount-controls select {
-  width: 54px;
   min-height: 36px;
   padding: 4px 7px;
   font-size: 12px;
+}
+
+.discount-controls .custom-select-trigger {
+  min-height: 36px;
+  padding: 4px 26px 4px 8px;
+  font-size: 12.5px;
+  line-height: 28px;
+  text-align: center;
+}
+
+.discount-controls .custom-select-trigger:after {
+  right: 10px;
+}
+
+.discount-controls .custom-select-menu {
+  min-width: 72px;
+  width: max-content;
 }
 
 .discount-controls input {
@@ -1921,6 +2001,214 @@ tbody tr:last-child td {
   padding: 4px 9px;
   font-size: 12.5px;
   text-align: right;
+}
+
+/* POS payment rows + custom payment method picker */
+.payments-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  margin: 4px 0 10px;
+}
+
+.payments-heading button {
+  border: 0;
+  background: none;
+  color: var(--red-dark);
+  font-weight: 750;
+  font-size: 12px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.payment-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.payment-input-row > .payment-method-picker {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.payment-method-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.payment-method-picker .payment-method-value {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+  pointer-events: none !important;
+}
+
+.payment-method-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 30px 8px 10px;
+  overflow: hidden;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  background: var(--white);
+  color: var(--ink);
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.payment-method-trigger:hover {
+  border-color: #94a3b8;
+}
+
+.payment-method-picker.is-open .payment-method-trigger,
+.payment-method-trigger:focus-visible {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3.5px var(--red-glow);
+}
+
+.payment-method-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: var(--muted);
+}
+
+.payment-method-icon img,
+.payment-method-icon .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.payment-method-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.payment-method-chevron {
+  position: absolute;
+  right: 10px;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: #64748b;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.18s var(--ease-spring);
+}
+
+.payment-method-picker.is-open .payment-method-chevron {
+  transform: rotate(180deg);
+}
+
+.payment-method-options {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 80;
+  display: none;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  box-shadow: var(--shadow-lg);
+  max-width: calc(100vw - 24px);
+}
+
+.payment-method-picker.is-open > .payment-method-options,
+.payment-method-options.is-open-menu {
+  display: grid;
+  animation: dropdown-pop 0.18s var(--ease-spring) both;
+}
+
+.payment-method-options.is-fixed {
+  right: auto;
+}
+
+.payment-method-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.payment-method-option:hover,
+.payment-method-option:focus-visible,
+.payment-method-option.is-selected {
+  outline: none;
+  background: var(--red-light);
+  color: var(--red-dark);
+}
+
+.payment-method-option[data-method="bkash"]::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--bkash);
+  box-shadow: 0 0 0 3px var(--bkash-light);
+}
+
+.payment-method-option[data-method="bkash"]:hover,
+.payment-method-option[data-method="bkash"]:focus-visible,
+.payment-method-option[data-method="bkash"].is-selected {
+  background: var(--bkash-light);
+  color: var(--bkash-dark);
+}
+
+.payment-row-bkash .payment-method-trigger {
+  border-color: #f9a8d4;
+  background: var(--bkash-light);
+  color: var(--bkash-dark);
+}
+
+.payment-row-bkash .payment-method-picker.is-open .payment-method-trigger,
+.payment-row-bkash .payment-method-trigger:focus-visible {
+  border-color: var(--bkash);
+  box-shadow: 0 0 0 3.5px rgba(226, 19, 110, 0.18);
+}
+
+.payment-balance {
+  font-size: 12px;
+  text-align: right;
+  color: var(--muted);
+  margin: 8px 0 14px;
 }
 
 .coupon-total-line {
@@ -1992,16 +2280,38 @@ tbody tr:last-child td {
 .bkash-payment-details {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 155px;
+  grid-template-columns: minmax(0, 1fr) minmax(128px, 155px);
   align-items: center;
-  gap: 18px;
+  gap: clamp(12px, 2vw, 18px);
   margin-top: 10px;
-  padding: 18px;
+  padding: clamp(12px, 2vw, 18px);
   border: 1px solid #fbcfe8;
   border-radius: var(--radius-lg);
   background: linear-gradient(135deg, #fdf2f8 0%, #ffffff 80%);
   box-shadow: 0 4px 14px rgba(226, 19, 110, 0.08);
   animation: details-slide-in 0.22s var(--ease-spring) both;
+  min-width: 0;
+}
+
+.bkash-payment-copy {
+  display: grid;
+  justify-items: start;
+  align-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.bkash-payment-copy > b {
+  color: #500724;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+.bkash-payment-copy p {
+  margin: 0;
+  color: #831843;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 @keyframes details-slide-in {
@@ -2024,7 +2334,8 @@ tbody tr:last-child td {
 }
 
 .bkash-number-label {
-  margin-top: 5px;
+  display: block;
+  margin-top: 0;
   color: #831843;
   font-size: 10px;
   font-weight: 800;
@@ -2033,20 +2344,32 @@ tbody tr:last-child td {
 }
 
 .bkash-payment-copy strong {
-  font: 800 21px var(--font-display);
+  display: block;
+  max-width: 100%;
+  font: 800 clamp(18px, 3vw, 21px)/1.2 var(--font-display);
   color: #500724;
   letter-spacing: 0.03em;
+  overflow-wrap: anywhere;
+}
+
+.bkash-payment-copy small {
+  color: #831843;
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .bkash-qr-frame {
   display: grid;
   justify-items: center;
+  align-content: center;
   gap: 7px;
   padding: 11px;
   border: 1px solid #fbcfe8;
   border-radius: 15px;
   background: var(--white);
   box-shadow: var(--shadow-xs);
+  min-width: 0;
+  width: 100%;
 }
 
 .bkash-qr-frame span {
@@ -2066,6 +2389,8 @@ tbody tr:last-child td {
 
 .bkash-qr-zoom {
   position: relative;
+  display: block;
+  width: min(100%, 135px);
   border: 0;
   background: transparent;
   padding: 0;
@@ -2301,6 +2626,106 @@ dialog[open] {
 
 .orders-queue-summary > a:hover {
   text-decoration: underline;
+}
+
+.kitchen-queue {
+  margin-bottom: 24px;
+  padding: 20px 24px;
+  border: 1px solid #fed7aa;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(110deg, #fff7ed 0%, #ffffff 82%);
+  box-shadow: var(--shadow-sm);
+}
+
+.kitchen-queue-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.kitchen-queue-heading .eyebrow {
+  margin: 0 0 4px;
+  color: #c2410c;
+}
+
+.kitchen-queue-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font: 750 19px/1.3 var(--font-display);
+}
+
+.kitchen-queue-heading > div > p:last-child {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.kitchen-queue-count {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: var(--radius-full);
+  background: #ffedd5;
+  color: #9a3412;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.kitchen-queue-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kitchen-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #ffedd5;
+  border-radius: 12px;
+  background: var(--white);
+}
+
+.kitchen-queue-name {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.kitchen-queue-quantity {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: #9a3412;
+}
+
+.kitchen-queue-quantity strong {
+  font: 800 20px/1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.kitchen-queue-quantity small {
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.kitchen-queue-empty {
+  margin: 16px 0 0;
+  padding: 13px 15px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* Order status tabs */
@@ -4616,11 +5041,29 @@ dialog[open] {
   }
 
   .bkash-payment-details {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .bkash-qr-frame {
+    width: 100%;
+    max-width: 260px;
+    justify-self: center;
+  }
+
+  .bkash-qr-zoom {
+    width: min(100%, 180px);
   }
 
   .bkash-qr {
     max-width: 220px;
+  }
+
+  .discount-controls .custom-select,
+  .discount-controls select {
+    width: 64px;
+    flex-basis: 64px;
+    min-width: 64px;
   }
 
   .ingredient-cards {
@@ -4649,6 +5092,14 @@ dialog[open] {
 
   .orders-queue-summary > a {
     white-space: normal;
+  }
+
+  .kitchen-queue {
+    padding: 16px;
+  }
+
+  .kitchen-queue-list {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   }
 
   .revenue-product-row {
@@ -4689,6 +5140,19 @@ dialog[open] {
 
   .payment-legend {
     width: 100%;
+  }
+
+  .bkash-payment-details {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .bkash-qr-frame {
+    padding: 9px;
+  }
+
+  .bkash-qr-zoom {
+    width: min(100%, 160px);
   }
 }
 

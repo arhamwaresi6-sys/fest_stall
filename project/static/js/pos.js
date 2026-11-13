@@ -19,30 +19,89 @@
   let pendingProduct = null;
   let paymentPickerId = 0;
 
-  const addPaymentRow = (method = 'hand', amount = '', automatic = false) => {
+  const addPaymentRow = (method = 'hand') => {
     const row = document.createElement('div');
     row.className = 'payment-input-row';
-    row.dataset.automatic = automatic ? '1' : '0';
     const optionsId = `payment-method-options-${++paymentPickerId}`;
-    row.innerHTML = `<div class="payment-method-picker"><select class="payment-method-value" aria-hidden="true" tabindex="-1"><option value="hand">By hand (cash)</option><option value="bkash">bKash</option></select><button class="payment-method-trigger" type="button" aria-label="Payment method" aria-haspopup="listbox" aria-expanded="false" aria-controls="${optionsId}"><span class="payment-method-icon" aria-hidden="true"></span><span class="payment-method-label"></span><svg class="payment-method-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button><div class="payment-method-options" id="${optionsId}" role="listbox" aria-label="Payment methods" hidden><button type="button" class="payment-method-option" role="option" data-method="hand">By hand (cash)</button><button type="button" class="payment-method-option" role="option" data-method="bkash">bKash</button></div></div><input class="payment-amount" type="number" min="0" step="0.01" placeholder="Amount" aria-label="Payment amount"><input class="payment-reference" maxlength="120" placeholder="Ref. ID (optional)" aria-label="Reference ID"><button class="remove-payment" type="button" aria-label="Remove payment">×</button><div class="bkash-payment-details" hidden><div class="bkash-payment-copy"><span class="bkash-brand"><img src="${esc(checkoutForm.dataset.bkashIcon)}" alt=""> <span>bKash</span></span><b>Scan to pay</b><p>Open your bKash app and scan this QR code, or send money to the number below.</p><span class="bkash-number-label">bKash number</span><strong>01978327028</strong><small>Confirm the recipient before sending your payment.</small></div><div class="bkash-qr-frame"><button class="bkash-qr-zoom" type="button" aria-label="Enlarge bKash QR code for scanning"><img class="bkash-qr" src="${esc(checkoutForm.dataset.bkashQr)}" alt=""><span class="bkash-qr-expand-hint">Tap to enlarge</span></button><span>Scan with bKash</span></div></div>`;
+    row.innerHTML = `<div class="payment-method-picker"><select class="payment-method-value" aria-hidden="true" tabindex="-1"><option value="hand">By hand (cash)</option><option value="bkash">bKash</option></select><button class="payment-method-trigger" type="button" aria-label="Payment method" aria-haspopup="listbox" aria-expanded="false" aria-controls="${optionsId}"><span class="payment-method-icon" aria-hidden="true"></span><span class="payment-method-label"></span><svg class="payment-method-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button><div class="payment-method-options" id="${optionsId}" role="listbox" aria-label="Payment methods" hidden><button type="button" class="payment-method-option" role="option" data-method="hand">By hand (cash)</button><button type="button" class="payment-method-option" role="option" data-method="bkash">bKash</button></div></div><div class="bkash-payment-details" hidden><div class="bkash-payment-copy"><span class="bkash-brand"><img src="${esc(checkoutForm.dataset.bkashIcon)}" alt=""> <span>bKash</span></span><b>Scan to pay</b><p>Open your bKash app and scan this QR code, or send money to the number below.</p><span class="bkash-number-label">bKash number</span><strong>01978327028</strong><small>Confirm the recipient before sending your payment.</small></div><div class="bkash-qr-frame"><button class="bkash-qr-zoom" type="button" aria-label="Enlarge bKash QR code for scanning"><img class="bkash-qr" src="${esc(checkoutForm.dataset.bkashQr)}" alt=""><span class="bkash-qr-expand-hint">Tap to enlarge</span></button><span>Scan with bKash</span></div></div>`;
     const select = row.querySelector('select');
     const methodPicker = row.querySelector('.payment-method-picker');
     const methodTrigger = row.querySelector('.payment-method-trigger');
     const methodOptions = row.querySelector('.payment-method-options');
     const optionButtons = [...methodOptions.querySelectorAll('.payment-method-option')];
-    const input = row.querySelector('.payment-amount');
     select.value = method;
-    input.value = amount;
+    const clearFixedMenu = () => {
+      methodOptions.hidden = true;
+      methodOptions.classList.remove('is-fixed', 'is-open-menu');
+      methodOptions.style.position = '';
+      methodOptions.style.left = '';
+      methodOptions.style.right = '';
+      methodOptions.style.top = '';
+      methodOptions.style.bottom = '';
+      methodOptions.style.width = '';
+      methodOptions.style.maxHeight = '';
+      methodOptions.style.zIndex = '';
+      methodOptions.style.display = '';
+      if (methodOptions.parentElement !== methodPicker) methodPicker.append(methodOptions);
+    };
+    const placeFixedMenu = () => {
+      if (methodOptions.parentElement !== document.body) document.body.append(methodOptions);
+      methodOptions.hidden = false;
+      methodOptions.classList.add('is-fixed', 'is-open-menu');
+      methodOptions.style.display = 'grid';
+      const rect = methodTrigger.getBoundingClientRect();
+      const viewportPadding = 12;
+      const gap = 6;
+      const menuHeight = Math.min(methodOptions.scrollHeight || 120, 200);
+      const spaceAbove = Math.max(0, rect.top - viewportPadding - gap);
+      const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - viewportPadding - gap);
+      const opensUp = spaceBelow < menuHeight && spaceAbove > spaceBelow;
+      const availableHeight = Math.max(opensUp ? spaceAbove : spaceBelow, 96);
+      const width = Math.min(Math.max(rect.width, 140), Math.max(0, window.innerWidth - viewportPadding * 2));
+      const left = Math.max(viewportPadding, Math.min(rect.left, window.innerWidth - width - viewportPadding));
+      methodOptions.style.position = 'fixed';
+      methodOptions.style.left = `${left}px`;
+      methodOptions.style.width = `${width}px`;
+      methodOptions.style.right = 'auto';
+      methodOptions.style.maxHeight = `${Math.min(menuHeight, availableHeight)}px`;
+      methodOptions.style.zIndex = '80';
+      if (opensUp) {
+        methodOptions.style.top = 'auto';
+        methodOptions.style.bottom = `${window.innerHeight - rect.top + gap}px`;
+      } else {
+        methodOptions.style.top = `${rect.bottom + gap}px`;
+        methodOptions.style.bottom = 'auto';
+      }
+    };
     const closeMethodPicker = (restoreFocus = false) => {
       methodPicker.classList.remove('is-open');
       methodTrigger.setAttribute('aria-expanded', 'false');
-      methodOptions.hidden = true;
+      clearFixedMenu();
       if (restoreFocus) methodTrigger.focus();
     };
     const openMethodPicker = (focusSelected = false) => {
+      document.querySelectorAll('.payment-method-picker.is-open').forEach((picker) => {
+        if (picker === methodPicker) return;
+        picker.classList.remove('is-open');
+        picker.querySelector('.payment-method-trigger')?.setAttribute('aria-expanded', 'false');
+        const options = picker.querySelector('.payment-method-options');
+        if (!options) return;
+        options.hidden = true;
+        options.classList.remove('is-fixed', 'is-open-menu');
+        options.style.position = '';
+        options.style.left = '';
+        options.style.right = '';
+        options.style.top = '';
+        options.style.bottom = '';
+        options.style.width = '';
+        options.style.maxHeight = '';
+        options.style.zIndex = '';
+        options.style.display = '';
+        if (options.parentElement !== picker) picker.append(options);
+      });
       methodPicker.classList.add('is-open');
       methodTrigger.setAttribute('aria-expanded', 'true');
-      methodOptions.hidden = false;
+      placeFixedMenu();
       if (focusSelected) {
         optionButtons.find((option) => option.dataset.method === select.value)?.focus();
       }
@@ -53,6 +112,7 @@
       const methodLabel = isBkash ? 'bKash' : 'By hand (cash)';
       methodTrigger.setAttribute('aria-label', `Payment method: ${methodLabel}`);
       methodTrigger.querySelector('.payment-method-label').textContent = methodLabel;
+      document.getElementById('paymentMethodInput').value = select.value;
       row.querySelector('.payment-method-icon').innerHTML = isBkash
         ? `<img src="${esc(checkoutForm.dataset.bkashIcon)}" alt="">`
         : `<svg class="icon" aria-hidden="true" focusable="false"><use href="${esc(checkoutForm.dataset.icons)}#cash"></use></svg>`;
@@ -61,12 +121,18 @@
         option.setAttribute('aria-selected', String(selected));
         option.classList.toggle('is-selected', selected);
       });
-      row.querySelector('.bkash-payment-details').hidden = !isBkash;
+      const details = row.querySelector('.bkash-payment-details');
+      details.hidden = !isBkash;
+      if (isBkash) {
+        details.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+      }
     };
     select.addEventListener('change', updateMethod);
-    methodTrigger.addEventListener('click', () => {
-      if (methodOptions.hidden) openMethodPicker();
-      else closeMethodPicker();
+    methodTrigger.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (methodPicker.classList.contains('is-open')) closeMethodPicker();
+      else openMethodPicker();
     });
     methodTrigger.addEventListener('keydown', (event) => {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -99,12 +165,10 @@
       });
     });
     updateMethod();
-    input.addEventListener('input', () => { row.dataset.automatic = '0'; renderTotals(); });
-    row.querySelector('.remove-payment').addEventListener('click', () => { row.remove(); renderTotals(); });
     paymentRows.append(row);
     return row;
   };
-  addPaymentRow('hand', '0.00', true);
+  addPaymentRow('hand');
 
   paymentRows.addEventListener('click', (event) => {
     const zoomButton = event.target.closest('.bkash-qr-zoom');
@@ -114,13 +178,38 @@
     expandedQr.src = qr.currentSrc || qr.src;
     bkashQrDialog.showModal();
   });
-  document.addEventListener('click', (event) => {
+  const findPaymentOptions = (picker) => {
+    const optionsId = picker.querySelector('.payment-method-trigger')?.getAttribute('aria-controls');
+    return (optionsId && document.getElementById(optionsId)) || picker.querySelector('.payment-method-options');
+  };
+  const resetPaymentOptions = (picker, options) => {
+    picker.classList.remove('is-open');
+    picker.querySelector('.payment-method-trigger')?.setAttribute('aria-expanded', 'false');
+    if (!options) return;
+    options.hidden = true;
+    options.classList.remove('is-fixed', 'is-open-menu');
+    options.style.position = '';
+    options.style.left = '';
+    options.style.right = '';
+    options.style.top = '';
+    options.style.bottom = '';
+    options.style.width = '';
+    options.style.maxHeight = '';
+    options.style.zIndex = '';
+    options.style.display = '';
+    if (options.parentElement !== picker) picker.append(options);
+  };
+  document.addEventListener('pointerdown', (event) => {
     if (!(event.target instanceof Element)) return;
     document.querySelectorAll('.payment-method-picker.is-open').forEach((picker) => {
-      if (picker.contains(event.target)) return;
-      picker.classList.remove('is-open');
-      picker.querySelector('.payment-method-trigger').setAttribute('aria-expanded', 'false');
-      picker.querySelector('.payment-method-options').hidden = true;
+      const options = findPaymentOptions(picker);
+      if (picker.contains(event.target) || options?.contains(event.target)) return;
+      resetPaymentOptions(picker, options);
+    });
+  }, true);
+  window.addEventListener('resize', () => {
+    document.querySelectorAll('.payment-method-picker.is-open').forEach((picker) => {
+      resetPaymentOptions(picker, findPaymentOptions(picker));
     });
   });
   bkashQrDialog.querySelector('.bkash-qr-dialog-close').addEventListener('click', () => {
@@ -176,15 +265,7 @@
       document.getElementById('applyCoupon').hidden = false;
       couponInput.disabled = false;
     }
-    const rows = [...paymentRows.querySelectorAll('.payment-input-row')];
-    const firstAuto = rows.find((row) => row.dataset.automatic === '1');
-    if (firstAuto) firstAuto.querySelector('.payment-amount').value = total.toFixed(2);
-    const paid = rows.reduce((sum, row) => sum + Math.max(0, Number(row.querySelector('.payment-amount').value) || 0), 0);
-    const balance = Math.max(0, total - paid);
-    const balanceEl = document.getElementById('paymentBalance');
-    balanceEl.textContent = paid > total ? `Over by · ${currency(paid-total)}` : (balance > 0 ? `Remaining · ${currency(balance)}` : `Fully paid · ${currency(paid)}`);
-    balanceEl.classList.toggle('danger-text', paid > total);
-    document.getElementById('checkoutButton').disabled = cart.size === 0 || paid > total;
+    document.getElementById('checkoutButton').disabled = cart.size === 0;
     document.getElementById('cartCount').textContent = [...cart.values()].reduce((n, item) => n + item.quantity, 0);
   }
   function renderCart() {
@@ -342,12 +423,6 @@
     renderTotals();
     couponInput.focus();
   });
-  document.getElementById('addPayment').addEventListener('click', () => {
-    const first = paymentRows.querySelector('.payment-input-row');
-    if (first && first.dataset.automatic === '1') { first.dataset.automatic = '0'; first.querySelector('.payment-amount').value = ''; }
-    addPaymentRow('bkash', '', false);
-    renderTotals();
-  });
   let activeCategory = '';
   const filterProducts = () => {
     const q = document.getElementById('productSearch').value.trim().toLowerCase();
@@ -366,7 +441,7 @@
       quantity:item.quantity,
       addons:item.addons.map((addon) => addon.id)
     })));
-    document.getElementById('paymentsJson').value = '[]';
+    document.getElementById('paymentMethodInput').value = paymentRows.querySelector('.payment-method-value').value;
     document.getElementById('checkoutButton').disabled = true;
     document.getElementById('checkoutButton').textContent = 'Saving order…';
   });
